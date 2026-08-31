@@ -1,6 +1,6 @@
 # hdf5-rust
 
-Pure-Rust [HDF5](https://www.hdfgroup.org/solutions/hdf5/) reader and writer. **No libhdf5. No C FFI. No crate dependencies.**
+Pure-Rust [HDF5](https://www.hdfgroup.org/solutions/hdf5/) reader and writer. **No libhdf5. No C FFI. No crate dependencies.** First stable release: **1.0.0** on [crates.io](https://crates.io/crates/hdf5-rust).
 
 Files are standard HDF5: h5py, MATLAB `h5read`, HDFView, and Julia HDF5.jl can open what this crate writes, and this crate can open what those tools write (contiguous IEEE and opaque datasets).
 
@@ -24,13 +24,13 @@ Written datasets carry string attributes `hdf5-rust-version` and `created`.
 
 ```toml
 [dependencies]
-hdf5-rust = "0.1"
+hdf5-rust = "1.0"
 ```
 
 `std` (file I/O) is on by default. For `no_std` + alloc:
 
 ```toml
-hdf5-rust = { version = "0.1", default-features = false }
+hdf5-rust = { version = "1.0", default-features = false }
 ```
 
 Then use `Hdf5File::from_bytes` / `to_bytes`.

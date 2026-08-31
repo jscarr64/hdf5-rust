@@ -1,6 +1,6 @@
 [package]
 name = "hdf5-rust"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Jeffrey S Carr <jscarr@gmail.com>"]
@@ -9,6 +9,7 @@ description = "Pure-Rust HDF5 reader and writer. No libhdf5, no C FFI, no crate 
 readme = "README.md"
 repository = "https://github.com/jscarr64/hdf5-rust"
 homepage = "https://github.com/jscarr64/hdf5-rust"
+documentation = "https://docs.rs/hdf5-rust"
 keywords = ["hdf5", "scientific", "no-std", "hdf"]
 categories = ["encoding", "parser-implementations", "science", "no-std"]
 

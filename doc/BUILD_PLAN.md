@@ -3,9 +3,9 @@
 **Trio:** this file · inventory [`CAPABILITIES.md`](CAPABILITIES.md) · golds in `tests/`. A gold is an expected file, bit pattern, shape, or named error. Do not invent substitutes. Incomplete paths return `Err`.
 
 **Last updated:** 2026-08-31
-**Crate:** `hdf5-rust` 0.1.0
+**Crate:** `hdf5-rust` 1.0.0
 **License:** MIT OR Apache-2.0
-**Policy:** 100% Rust. No libhdf5. No C FFI. **No crate dependencies.** No hardware float in any arithmetic path. `unsafe` only if a byte cast is strictly required (none in v0.1).
+**Policy:** 100% Rust. No libhdf5. No C FFI. **No crate dependencies.** No hardware float in any arithmetic path. `unsafe` only if a byte cast is strictly required (none in v1.0).
 
 Crate name on crates.io cannot be `hdf5` (C bindings). This package is `hdf5-rust`.
 
