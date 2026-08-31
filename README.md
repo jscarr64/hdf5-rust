@@ -69,7 +69,7 @@ fn main() -> hdf5_rust::Result<()> {
 
 ## License
 
-MIT OR Apache-2.0.
+MIT OR Apache-2.0. See [CONTRIBUTING.md](CONTRIBUTING.md) if you want to report a bug or send a patch.
 
 ## HDF5 trademark
 
