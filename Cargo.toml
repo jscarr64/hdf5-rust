@@ -1,0 +1,21 @@
+[package]
+name = "hdf5-rust"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+authors = ["Jeffrey S Carr <jscarr@gmail.com>"]
+license = "MIT OR Apache-2.0"
+description = "Pure-Rust HDF5 reader and writer. No libhdf5, no C FFI, no crate dependencies."
+readme = "README.md"
+repository = "https://github.com/jscarr64/hdf5-rust"
+homepage = "https://github.com/jscarr64/hdf5-rust"
+keywords = ["hdf5", "scientific", "no-std", "hdf"]
+categories = ["encoding", "parser-implementations", "science", "no-std"]
+
+[features]
+default = ["std"]
+std = []
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
