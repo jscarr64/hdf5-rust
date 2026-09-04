@@ -1,6 +1,6 @@
 [package]
 name = "hdf5-rust"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Jeffrey S Carr <jscarr1964@gmail.com>"]

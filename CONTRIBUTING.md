@@ -1,6 +1,6 @@
 # Contributing to hdf5-rust
 
-Thank you for looking at the crate. This is a small, standalone HDF5 **format** library. Version **1.0.1** is the current public API (`Hdf5File`, named `HDF5Error` variants, zero crate dependencies). Breaking changes would be a new major version. Issues and pull requests are welcome when they match that job.
+Thank you for looking at the crate. This is a small, standalone HDF5 **format** library. Version **1.0.2** is the current public API (`Hdf5File`, named `HDF5Error` variants, zero crate dependencies). Breaking changes would be a new major version. Issues and pull requests are welcome when they match that job.
 
 ## What this crate is
 

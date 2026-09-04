@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2 — 2026-09-04
+
+- Build plan removed from the crate package. Capabilities and contributing stay.
+- Author email `jscarr1964@gmail.com`.
+
 ## 1.0.1 — 2026-09-04
 
 - Author email `jscarr1964@gmail.com`.
