@@ -1,9 +1,9 @@
 [package]
 name = "hdf5-rust"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 rust-version = "1.70"
-authors = ["Jeffrey S Carr <jscarr@gmail.com>"]
+authors = ["Jeffrey S Carr <jscarr1964@gmail.com>"]
 license = "MIT OR Apache-2.0"
 description = "Pure-Rust HDF5 reader and writer. No libhdf5, no C FFI, no crate dependencies."
 readme = "README.md"

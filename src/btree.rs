@@ -7,8 +7,8 @@ use crate::buf::Reader;
 use crate::error::{HDF5Error, Result};
 use crate::messages::cstr_from_heap;
 use crate::{
-    HDF5_BTREE_GROUP, HDF5_GCOL_SIGNATURE, HDF5_HEAP_SIGNATURE, HDF5_MAX_WALK_DEPTH,
-    HDF5_SNOD_SIGNATURE, HDF5_TREE_SIGNATURE,
+    HDF5_BTREE_CHUNK, HDF5_BTREE_GROUP, HDF5_GCOL_SIGNATURE, HDF5_HEAP_SIGNATURE,
+    HDF5_MAX_WALK_DEPTH, HDF5_SNOD_SIGNATURE, HDF5_TREE_SIGNATURE,
 };
 
 pub fn read_local_heap<'a>(
@@ -114,6 +114,77 @@ fn read_snod(
         }
     }
     Ok(out)
+}
+
+/// One raw-data chunk (B-tree type 1 leaf).
+pub struct ChunkRef {
+    pub size: u32,
+    pub filter_mask: u32,
+    pub offset: Vec<u64>,
+    pub addr: u64,
+}
+
+fn read_chunk_key(r: &mut Reader<'_>, ndims: usize) -> Result<(u32, u32, Vec<u64>)> {
+    let size = r.u32()?;
+    let filter_mask = r.u32()?;
+    let mut offset = Vec::with_capacity(ndims);
+    for _ in 0..ndims {
+        offset.push(r.u64()?);
+    }
+    Ok((size, filter_mask, offset))
+}
+
+/// Walk a version-1 B-tree of raw data chunks.
+pub fn walk_chunk_btree(
+    data: &[u8],
+    btree_addr: u64,
+    ndims: usize,
+    offset_size: u8,
+    length_size: u8,
+    depth: usize,
+) -> Result<Vec<ChunkRef>> {
+    if depth > HDF5_MAX_WALK_DEPTH {
+        return Err(HDF5Error::InvalidHeader);
+    }
+    let mut r = Reader::new(data, offset_size, length_size)?.at(btree_addr)?;
+    let sig = r.bytes(4)?;
+    if sig != HDF5_TREE_SIGNATURE {
+        return Err(HDF5Error::InvalidHeader);
+    }
+    let node_type = r.u8()?;
+    if node_type != HDF5_BTREE_CHUNK {
+        return Err(HDF5Error::InvalidHeader);
+    }
+    let level = r.u8()?;
+    let used = r.u16()? as usize;
+    let _left = r.addr()?;
+    let _right = r.addr()?;
+    let mut chunks = Vec::new();
+    for _ in 0..used {
+        let (size, filter_mask, offset) = read_chunk_key(&mut r, ndims)?;
+        let child = r.addr()?;
+        if level == 0 {
+            chunks.push(ChunkRef {
+                size,
+                filter_mask,
+                offset,
+                addr: child,
+            });
+        } else {
+            chunks.extend(walk_chunk_btree(
+                data,
+                child,
+                ndims,
+                offset_size,
+                length_size,
+                depth + 1,
+            )?);
+        }
+    }
+    if used > 0 {
+        let _ = read_chunk_key(&mut r, ndims)?;
+    }
+    Ok(chunks)
 }
 
 pub fn read_gheap_object(

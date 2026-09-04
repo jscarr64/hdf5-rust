@@ -6,11 +6,11 @@ use alloc::vec::Vec;
 use crate::buf::{push_u16, push_u32, push_u64, Reader};
 use crate::error::{HDF5Error, Result};
 use crate::{
-    HDF5_ATTR_VERSION, HDF5_CLASS_FLOAT, HDF5_CLASS_OPAQUE, HDF5_CLASS_STRING, HDF5_CLASS_VLEN,
-    HDF5_DATASPACE_VERSION, HDF5_DTYPE_VERSION, HDF5_FILL_VERSION, HDF5_LAYOUT_CHUNKED,
-    HDF5_LAYOUT_COMPACT, HDF5_LAYOUT_CONTIGUOUS, HDF5_LAYOUT_VERSION, HDF5_LINK_VERSION,
-    HDF5_MAX_DIMS, HDF5_MAX_NAME_LEN, HDF5_OPAQUE_TAG, HDF5_SPACE_SCALAR, HDF5_SPACE_SIMPLE,
-    HDF5_UNDEF_ADDR_8, HDF5_UNLIMITED,
+    HDF5_ATTR_VERSION, HDF5_CLASS_FLOAT, HDF5_CLASS_INTEGER, HDF5_CLASS_OPAQUE, HDF5_CLASS_STRING,
+    HDF5_CLASS_VLEN, HDF5_DATASPACE_VERSION, HDF5_DTYPE_VERSION, HDF5_FILL_VERSION,
+    HDF5_LAYOUT_CHUNKED, HDF5_LAYOUT_COMPACT, HDF5_LAYOUT_CONTIGUOUS, HDF5_LAYOUT_VERSION,
+    HDF5_LINK_VERSION, HDF5_MAX_DIMS, HDF5_MAX_NAME_LEN, HDF5_OPAQUE_TAG, HDF5_SPACE_SCALAR,
+    HDF5_SPACE_SIMPLE, HDF5_UNDEF_ADDR_8, HDF5_UNLIMITED,
 };
 
 /// In-memory datatype after parsing a datatype message.
@@ -18,6 +18,14 @@ use crate::{
 pub enum ParsedDType {
     Float64Le,
     Float32Le,
+    Int8Le,
+    Int16Le,
+    Int32Le,
+    Int64Le,
+    UInt8Le,
+    UInt16Le,
+    UInt32Le,
+    UInt64Le,
     Opaque { size: usize },
     FixedString { size: usize },
     VlenString,
@@ -25,10 +33,13 @@ pub enum ParsedDType {
 }
 
 impl ParsedDType {
+    #[allow(dead_code)]
     pub fn element_size(&self) -> usize {
         match *self {
-            Self::Float64Le => 8,
-            Self::Float32Le => 4,
+            Self::Float64Le | Self::Int64Le | Self::UInt64Le => 8,
+            Self::Float32Le | Self::Int32Le | Self::UInt32Le => 4,
+            Self::Int16Le | Self::UInt16Le => 2,
+            Self::Int8Le | Self::UInt8Le => 1,
             Self::Opaque { size } => size,
             Self::FixedString { size } => size,
             Self::VlenString => 0,
@@ -68,6 +79,19 @@ pub fn encode_ieee_f32le() -> Vec<u8> {
     v.push(0);
     v.push(23);
     push_u32(&mut v, 127);
+    v
+}
+
+pub fn encode_integer(size: u32, signed: bool) -> Vec<u8> {
+    let mut v = Vec::with_capacity(12);
+    v.push((HDF5_DTYPE_VERSION << 4) | HDF5_CLASS_INTEGER);
+    v.push(if signed { 0x08 } else { 0x00 });
+    v.push(0);
+    v.push(0);
+    push_u32(&mut v, size);
+    push_u16(&mut v, 0);
+    let prec = size.saturating_mul(8);
+    push_u16(&mut v, prec as u16);
     v
 }
 
@@ -197,6 +221,7 @@ pub fn parse_datatype(body: &[u8]) -> Result<ParsedDType> {
     let bit1 = body[2];
     let size = u32::from_le_bytes([body[4], body[5], body[6], body[7]]) as usize;
     match class {
+        HDF5_CLASS_INTEGER => parse_integer(bit0, size, body),
         HDF5_CLASS_FLOAT => {
             let le = (bit0 & 0x41) == 0;
             if !le {
@@ -221,6 +246,31 @@ pub fn parse_datatype(body: &[u8]) -> Result<ParsedDType> {
         }
         _ => Ok(ParsedDType::Other { size }),
     }
+}
+
+fn parse_integer(bit0: u8, size: usize, body: &[u8]) -> Result<ParsedDType> {
+    let le = (bit0 & 0x01) == 0;
+    if !le {
+        return Ok(ParsedDType::Other { size });
+    }
+    let signed = (bit0 & 0x08) != 0;
+    if body.len() >= 12 {
+        let prec = u16::from_le_bytes([body[10], body[11]]) as usize;
+        if prec != size.saturating_mul(8) {
+            return Ok(ParsedDType::Other { size });
+        }
+    }
+    Ok(match (signed, size) {
+        (true, 1) => ParsedDType::Int8Le,
+        (true, 2) => ParsedDType::Int16Le,
+        (true, 4) => ParsedDType::Int32Le,
+        (true, 8) => ParsedDType::Int64Le,
+        (false, 1) => ParsedDType::UInt8Le,
+        (false, 2) => ParsedDType::UInt16Le,
+        (false, 4) => ParsedDType::UInt32Le,
+        (false, 8) => ParsedDType::UInt64Le,
+        _ => ParsedDType::Other { size },
+    })
 }
 
 pub struct ParsedSpace {
@@ -267,7 +317,7 @@ pub fn parse_dataspace(body: &[u8], length_size: u8) -> Result<ParsedSpace> {
 pub enum ParsedLayout {
     Contiguous { addr: u64, size: u64 },
     Compact { data: Vec<u8> },
-    Chunked,
+    Chunked { addr: u64, chunk_dims: Vec<u32> },
 }
 
 pub fn parse_layout(body: &[u8], offset_size: u8, length_size: u8) -> Result<ParsedLayout> {
@@ -279,11 +329,18 @@ pub fn parse_layout(body: &[u8], offset_size: u8, length_size: u8) -> Result<Par
     r.u8()?;
     match version {
         1 | 2 => {
-            let _ndims = r.u8()?;
+            let ndims = r.u8()? as usize;
             let class = r.u8()?;
             r.skip(5)?;
             match class {
-                HDF5_LAYOUT_CHUNKED => Ok(ParsedLayout::Chunked),
+                HDF5_LAYOUT_CHUNKED => {
+                    let addr = r.addr()?;
+                    let mut chunk_dims = Vec::new();
+                    for _ in 0..ndims {
+                        chunk_dims.push(r.u32()?);
+                    }
+                    Ok(ParsedLayout::Chunked { addr, chunk_dims })
+                }
                 HDF5_LAYOUT_CONTIGUOUS => {
                     let addr = r.addr()?;
                     Ok(ParsedLayout::Contiguous { addr, size: 0 })
@@ -297,10 +354,39 @@ pub fn parse_layout(body: &[u8], offset_size: u8, length_size: u8) -> Result<Par
                 _ => Err(HDF5Error::InvalidHeader),
             }
         }
-        3 | 4 => {
+        3 => {
             let class = r.u8()?;
             match class {
-                HDF5_LAYOUT_CHUNKED => Ok(ParsedLayout::Chunked),
+                HDF5_LAYOUT_CHUNKED => {
+                    let ndims = r.u8()? as usize;
+                    let addr = r.addr()?;
+                    let mut chunk_dims = Vec::new();
+                    for _ in 0..ndims {
+                        chunk_dims.push(r.u32()?);
+                    }
+                    Ok(ParsedLayout::Chunked { addr, chunk_dims })
+                }
+                HDF5_LAYOUT_CONTIGUOUS => {
+                    let addr = r.addr()?;
+                    let size = r.length()?;
+                    Ok(ParsedLayout::Contiguous { addr, size })
+                }
+                HDF5_LAYOUT_COMPACT => {
+                    let sz = r.u16()? as usize;
+                    Ok(ParsedLayout::Compact {
+                        data: r.bytes(sz)?.to_vec(),
+                    })
+                }
+                _ => Err(HDF5Error::InvalidHeader),
+            }
+        }
+        4 => {
+            let class = r.u8()?;
+            match class {
+                HDF5_LAYOUT_CHUNKED => Ok(ParsedLayout::Chunked {
+                    addr: HDF5_UNDEF_ADDR_8,
+                    chunk_dims: Vec::new(),
+                }),
                 HDF5_LAYOUT_CONTIGUOUS => {
                     let addr = r.addr()?;
                     let size = r.length()?;
@@ -438,6 +524,17 @@ pub fn parse_symbol_table(body: &[u8], offset_size: u8) -> Result<(u64, u64)> {
     let btree = r.addr()?;
     let heap = r.addr()?;
     Ok((btree, heap))
+}
+
+/// Number of filters in a filter-pipeline message. `0` if the body is empty.
+pub fn parse_filter_count(body: &[u8]) -> Result<u8> {
+    if body.len() < 2 {
+        return Ok(0);
+    }
+    match body[0] {
+        1 | 2 => Ok(body[1]),
+        _ => Err(HDF5Error::UnsupportedVersion(body[0])),
+    }
 }
 
 pub fn cstr_from_heap(heap: &[u8], offset: u64) -> Result<String> {

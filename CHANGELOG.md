@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.1 — 2026-09-04
+
+- Author email `jscarr1964@gmail.com`.
+- Integer LE datasets: `i8`/`i16`/`i32`/`i64`/`u8`/`u16`/`u32`/`u64` write, read, and selected append.
+- Rank 0 (scalar) through **32** (HDF5 format max). Rank 2 is not a cap. Rank 3/4/5 golds; mixed files open.
+- Uncompressed chunked read (B-tree v1 type 1). Gzip/deflate is `FilteredNotSupported`. Layout v4 chunk index stays `ChunkedNotSupported`.
+- Unknown dtypes (compound, big-endian float, …) are `HDF5DType::Other`, not `Opaque` or `Float64`.
+- `dataset_shape` reports shape for chunked/filtered datasets; only payload reads fail.
+- `write_attr_str` / `list_attrs`. `append_f32` / `append_i32` / `append_u64` / `append_opaque`.
+- h5py golds: int32, rank-3, mixed table+cube, uncompressed chunked values, gzip filter error, complex → Other.
+
 ## 1.0.0 — 2026-08-31
 
 First stable crates.io release.

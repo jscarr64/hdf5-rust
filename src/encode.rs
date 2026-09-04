@@ -8,7 +8,7 @@ use crate::buf::align8;
 use crate::error::{HDF5Error, Result};
 use crate::messages::{
     encode_dataspace, encode_fill, encode_group_info, encode_hard_link, encode_ieee_f32le,
-    encode_ieee_f64le, encode_layout_contiguous, encode_link_info, encode_opaque,
+    encode_ieee_f64le, encode_integer, encode_layout_contiguous, encode_link_info, encode_opaque,
     encode_string_attr,
 };
 use crate::model::{DTypeKind, FileModel};
@@ -33,6 +33,9 @@ pub fn encode(model: &FileModel) -> Result<Vec<u8>> {
     let mut ohdr_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
 
     for (path, ds) in &model.datasets {
+        if ds.filtered {
+            return Err(HDF5Error::FilteredNotSupported);
+        }
         if ds.chunked {
             return Err(HDF5Error::ChunkedNotSupported);
         }
@@ -46,7 +49,16 @@ pub fn encode(model: &FileModel) -> Result<Vec<u8>> {
         let dtype = match ds.kind {
             DTypeKind::Float64 => encode_ieee_f64le(),
             DTypeKind::Float32 => encode_ieee_f32le(),
+            DTypeKind::Int8 => encode_integer(1, true),
+            DTypeKind::Int16 => encode_integer(2, true),
+            DTypeKind::Int32 => encode_integer(4, true),
+            DTypeKind::Int64 => encode_integer(8, true),
+            DTypeKind::UInt8 => encode_integer(1, false),
+            DTypeKind::UInt16 => encode_integer(2, false),
+            DTypeKind::UInt32 => encode_integer(4, false),
+            DTypeKind::UInt64 => encode_integer(8, false),
             DTypeKind::Opaque(n) => encode_opaque(n as u32),
+            DTypeKind::Other { .. } => return Err(HDF5Error::UnsupportedDtype),
         };
         msgs.push(RawMsg {
             ty: HDF5_MSG_DATATYPE,

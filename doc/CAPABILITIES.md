@@ -1,7 +1,7 @@
 # hdf5-rust capabilities
 
-**Last updated:** 2026-08-31
-**Crate version:** 1.0.0
+**Last updated:** 2026-09-04
+**Crate version:** 1.0.1
 
 Independent HDF5 implementation. Not a wrapper. Not affiliated with The HDF Group. **Zero crate dependencies.**
 
@@ -27,9 +27,12 @@ Independent HDF5 implementation. Not a wrapper. Not affiliated with The HDF Grou
 | Item | Status |
 | ------ | -------- |
 | Contiguous IEEE_F64LE / IEEE_F32LE | ✅ |
+| Integer LE i8–i64 / u8–u64 | ✅ |
 | Opaque records | ✅ |
-| 1-D and 2-D simple dataspace | ✅ |
-| Chunked → `ChunkedNotSupported` | ✅ |
+| Compound / BE / other → `HDF5DType::Other` | ✅ |
+| Rank 0 (scalar) through 32 (HDF5 max; not capped at 2) | ✅ |
+| Uncompressed chunked read | ✅ |
+| Filtered (gzip) → `FilteredNotSupported` | ✅ |
 | Append along first dimension | ✅ |
 
 ## Groups and attributes
@@ -40,10 +43,11 @@ Independent HDF5 implementation. Not a wrapper. Not affiliated with The HDF Grou
 | Old-style symbol-table groups (read) | ✅ |
 | String attributes (fixed) | ✅ |
 | VL string attributes (global heap, read) | ✅ |
+| `write_attr_str` / `list_attrs` | ✅ |
 | Write `hdf5-rust-version` and `created` | ✅ |
 | h5py reads our files / we read h5py files | ✅ |
 | MATLAB `h5read` of our files | ✅ |
 
 ## Caller boundary
 
-This crate has **zero crate dependencies**. IEEE datasets are `u64`/`u32` bit lanes. Opaque datasets are raw records of a caller-chosen element size. `write_ieee64` / `read_ieee64` / `write_ieee32` / `read_ieee32` / `append_ieee64` are aliases of the `write_f64` family.
+This crate has **zero crate dependencies**. IEEE datasets are `u64`/`u32` bit lanes. Integers are `i*`/`u*` lanes. Opaque datasets are raw records of a caller-chosen element size. Compound and other unspecialized classes are `HDF5DType::Other`. `write_ieee64` / `read_ieee64` / `write_ieee32` / `read_ieee32` / `append_ieee64` are aliases of the `write_f64` family.

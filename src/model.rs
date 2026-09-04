@@ -15,21 +15,33 @@ pub struct DatasetRec {
     pub data: Vec<u8>,
     pub attrs: Vec<(String, String)>,
     pub chunked: bool,
+    pub filtered: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DTypeKind {
     Float64,
     Float32,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
     Opaque(usize),
+    Other { size: usize },
 }
 
 impl DTypeKind {
     pub fn elem_size(self) -> usize {
         match self {
-            Self::Float64 => 8,
-            Self::Float32 => 4,
-            Self::Opaque(n) => n,
+            Self::Float64 | Self::Int64 | Self::UInt64 => 8,
+            Self::Float32 | Self::Int32 | Self::UInt32 => 4,
+            Self::Int16 | Self::UInt16 => 2,
+            Self::Int8 | Self::UInt8 => 1,
+            Self::Opaque(n) | Self::Other { size: n } => n,
         }
     }
 
@@ -37,7 +49,16 @@ impl DTypeKind {
         match self {
             Self::Float64 => HDF5DType::Float64,
             Self::Float32 => HDF5DType::Float32,
+            Self::Int8 => HDF5DType::Int8,
+            Self::Int16 => HDF5DType::Int16,
+            Self::Int32 => HDF5DType::Int32,
+            Self::Int64 => HDF5DType::Int64,
+            Self::UInt8 => HDF5DType::UInt8,
+            Self::UInt16 => HDF5DType::UInt16,
+            Self::UInt32 => HDF5DType::UInt32,
+            Self::UInt64 => HDF5DType::UInt64,
             Self::Opaque(n) => HDF5DType::Opaque(n),
+            Self::Other { .. } => HDF5DType::Other,
         }
     }
 }

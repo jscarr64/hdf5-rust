@@ -6,7 +6,7 @@ pub const HDF5_SIGNATURE: [u8; 8] = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0
 /// Superblock version this crate writes.
 pub const HDF5_SUPERBLOCK_V2: u8 = 2;
 
-/// Maximum rank accepted on write or returned on read.
+/// Maximum dataspace rank (HDF5 format `H5S_MAX_RANK`). Rank 2 is not a cap.
 pub const HDF5_MAX_DIMS: usize = 32;
 
 /// Maximum link / attribute / path component length in bytes.
@@ -125,6 +125,14 @@ pub const HDF5_MSG_FLAG_CONSTANT: u8 = 0x01;
 
 /// B-tree node type: group (symbol table).
 pub const HDF5_BTREE_GROUP: u8 = 0;
+/// B-tree node type: raw data chunks.
+pub const HDF5_BTREE_CHUNK: u8 = 1;
+
+/// Header message type: filter pipeline.
+pub const HDF5_MSG_FILTER: u8 = 0x0B;
+
+/// Datatype class: fixed-point integer.
+pub const HDF5_CLASS_INTEGER: u8 = 0;
 
 /// Maximum object-header walk depth (continuation + nested groups).
 pub const HDF5_MAX_WALK_DEPTH: usize = 64;

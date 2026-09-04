@@ -11,4 +11,4 @@ else
   echo "MATLAB binary not found. Export MATLAB=/path/to/matlab and re-run."
   exit 1
 fi
-cargo test --test interop gold_matlab_h5read_our_write -- --ignored --exact --nocapture
+cargo test --test interop gold_matlab_h5read -- --ignored --nocapture

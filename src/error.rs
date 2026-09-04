@@ -11,8 +11,13 @@ pub enum HDF5Error {
     InvalidSignature,
     /// Superblock or object-header version this crate does not read.
     UnsupportedVersion(u8),
-    /// Dataset storage layout is chunked.
+    /// Dataset storage layout is chunked and this crate could not materialize it
+    /// (no B-tree, layout v4 index, or empty chunk index).
     ChunkedNotSupported,
+    /// Dataset uses an HDF5 filter (deflate/gzip, shuffle, …).
+    FilteredNotSupported,
+    /// Datatype cannot be written back (compound, big-endian, …).
+    UnsupportedDtype,
     /// No object at `path`.
     NotFound(String),
     /// Append rank or trailing dimensions do not match the existing dataset.
@@ -21,7 +26,7 @@ pub enum HDF5Error {
     Truncated,
     /// A header, checksum, or message failed validation.
     InvalidHeader,
-    /// Dataspace rank is greater than 2 (or greater than [`crate::HDF5_MAX_DIMS`]).
+    /// Dataspace rank is greater than [`crate::HDF5_MAX_DIMS`] (HDF5 format max is 32).
     RankNotSupported,
     /// Dataset datatype cannot satisfy the requested read (e.g. `read_f64` on F32).
     TypeMismatch,
@@ -40,6 +45,8 @@ impl fmt::Display for HDF5Error {
             Self::InvalidSignature => f.write_str("invalid HDF5 signature"),
             Self::UnsupportedVersion(v) => write!(f, "unsupported HDF5 version {v}"),
             Self::ChunkedNotSupported => f.write_str("chunked dataset not supported"),
+            Self::FilteredNotSupported => f.write_str("filtered HDF5 dataset not supported"),
+            Self::UnsupportedDtype => f.write_str("HDF5 datatype not supported"),
             Self::NotFound(p) => write!(f, "HDF5 path not found: {p}"),
             Self::ShapeMismatch => f.write_str("HDF5 dataspace shape mismatch"),
             Self::Truncated => f.write_str("truncated HDF5 file"),

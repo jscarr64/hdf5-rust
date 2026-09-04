@@ -1,15 +1,15 @@
 # Contributing to hdf5-rust
 
-Thank you for looking at the crate. This is a small, standalone HDF5 **format** library. Version **1.0** is the stable public API (`Hdf5File`, named `HDF5Error` variants, zero crate dependencies). Breaking changes would be a new major version. Issues and pull requests are welcome when they match that job.
+Thank you for looking at the crate. This is a small, standalone HDF5 **format** library. Version **1.0.1** is the current public API (`Hdf5File`, named `HDF5Error` variants, zero crate dependencies). Breaking changes would be a new major version. Issues and pull requests are welcome when they match that job.
 
 ## What this crate is
 
 - Pure Rust. No `libhdf5`, no C FFI, **no crate dependencies**.
 - IEEE values are integer bit patterns (`u64` / `u32` lanes). Hardware IEEE arithmetic is not used in `src/`.
 - Callers wrap their own array types. This crate does not depend on a numeric library.
-- Write: superblock v2, compact groups, contiguous 1-D / 2-D datasets (`IEEE_F64LE`, `IEEE_F32LE`, opaque).
-- Read: superblock v0–v3, object headers v1/v2, old-style symbol-table groups, contiguous data, string attributes.
-- Chunked datasets return `Err(HDF5Error::ChunkedNotSupported)`. That is the intended behavior, not a missing feature to stub out.
+- Write: superblock v2, compact groups, contiguous datasets (`IEEE_F64LE`, `IEEE_F32LE`, integer LE, opaque), rank 0–32 (format max; not capped at 2).
+- Read: superblock v0–v3, object headers v1/v2, old-style symbol-table groups, contiguous data, uncompressed chunked data, string attributes, integer dtypes.
+- Filtered (gzip/deflate) datasets return `Err(HDF5Error::FilteredNotSupported)`. A chunked layout that cannot be walked returns `ChunkedNotSupported`. Those are named stops, not panics and not guessed values.
 
 Incomplete paths return `Err`. They must not panic and must not invent data.
 
@@ -60,8 +60,7 @@ By submitting a change you agree it is licensed under **MIT OR Apache-2.0**, the
 ## Out of scope (will be closed)
 
 - Linking `libhdf5` or wrapping another HDF5 crate
-- Chunked read/write that returns guessed values
-- Rank greater than 2
+- Chunked or filtered read that returns guessed values
 - Depending on a numeric library inside this crate
 - Hardware floating-point arithmetic
 

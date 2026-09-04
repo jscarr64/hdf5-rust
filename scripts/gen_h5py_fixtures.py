@@ -29,4 +29,38 @@ with h5py.File(out / "h5py_chunked.h5", "w") as f:
         chunks=(2, 4),
     )
 
-print("wrote", list(out.glob("*.h5")))
+with h5py.File(out / "h5py_int32.h5", "w") as f:
+    f.create_dataset("data", data=np.arange(6, dtype=np.int32).reshape(2, 3))
+
+with h5py.File(out / "h5py_rank3.h5", "w") as f:
+    f.create_dataset("cube", data=np.arange(24, dtype=np.float64).reshape(2, 3, 4))
+
+with h5py.File(out / "h5py_rank4.h5", "w") as f:
+    f.create_dataset("vol", data=np.arange(48, dtype=np.float64).reshape(2, 2, 3, 4))
+
+with h5py.File(out / "h5py_rank5.h5", "w") as f:
+    f.create_dataset(
+        "stack", data=np.arange(48, dtype=np.int32).reshape(2, 2, 2, 2, 3)
+    )
+
+with h5py.File(out / "h5py_mixed.h5", "w") as f:
+    f.create_dataset(
+        "table",
+        data=np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float64),
+    )
+    f.create_dataset("cube", data=np.arange(24, dtype=np.float64).reshape(2, 3, 4))
+
+with h5py.File(out / "h5py_gzip.h5", "w") as f:
+    f.create_dataset(
+        "data",
+        data=np.arange(20, dtype=np.float64).reshape(5, 4),
+        compression="gzip",
+    )
+
+with h5py.File(out / "h5py_complex.h5", "w") as f:
+    f.create_dataset(
+        "data",
+        data=np.array([[1 + 2j, 3 + 4j], [5 + 6j, 7 + 8j]], dtype=np.complex128),
+    )
+
+print("wrote", sorted(p.name for p in out.glob("*.h5")))

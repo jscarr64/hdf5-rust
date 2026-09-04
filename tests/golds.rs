@@ -162,3 +162,146 @@ fn gold_slice_rows() {
     assert_eq!(shape, vec![3, 3]);
     assert_eq!(got, bits[6..15]);
 }
+
+#[test]
+fn gold_i32_2x3_bit_identical() {
+    let bits: Vec<i32> = (0..6).collect();
+    let mut f = Hdf5File::create();
+    f.write_i32("data", &[2, 3], &bits).expect("write");
+    let g = roundtrip(&f);
+    let (shape, got) = g.read_i32("data").expect("read");
+    assert_eq!(shape, vec![2, 3]);
+    assert_eq!(got, bits);
+    assert_eq!(g.dataset_dtype("data").expect("dtype"), HDF5DType::Int32);
+    match g.read_f64("data") {
+        Err(HDF5Error::TypeMismatch) => {}
+        other => panic!("expected TypeMismatch, got {other:?}"),
+    }
+}
+
+#[test]
+fn gold_integer_family_roundtrip() {
+    let mut f = Hdf5File::create();
+    f.write_i8("a", &[3], &[-1, 0, 1]).expect("i8");
+    f.write_i16("b", &[2], &[-300, 300]).expect("i16");
+    f.write_i64("c", &[1], &[i64::MIN]).expect("i64");
+    f.write_u8("d", &[2], &[0, 255]).expect("u8");
+    f.write_u16("e", &[1], &[40000]).expect("u16");
+    f.write_u32("f", &[1], &[3_000_000_000]).expect("u32");
+    f.write_u64("g", &[1], &[u64::MAX]).expect("u64");
+    let g = roundtrip(&f);
+    assert_eq!(g.read_i8("a").expect("a").1, vec![-1, 0, 1]);
+    assert_eq!(g.read_i16("b").expect("b").1, vec![-300, 300]);
+    assert_eq!(g.read_i64("c").expect("c").1, vec![i64::MIN]);
+    assert_eq!(g.read_u8("d").expect("d").1, vec![0, 255]);
+    assert_eq!(g.read_u16("e").expect("e").1, vec![40000]);
+    assert_eq!(g.read_u32("f").expect("f").1, vec![3_000_000_000]);
+    assert_eq!(g.read_u64("g").expect("g").1, vec![u64::MAX]);
+}
+
+#[test]
+fn gold_rank3_f64() {
+    let bits = bits_u64(24);
+    let mut f = Hdf5File::create();
+    f.write_f64("cube", &[2, 3, 4], &bits).expect("write");
+    let g = roundtrip(&f);
+    let (shape, got) = g.read_f64("cube").expect("read");
+    assert_eq!(shape, vec![2, 3, 4]);
+    assert_eq!(got, bits);
+}
+
+#[test]
+fn gold_rank4_f64() {
+    // Time × z × y × x — ordinary lab stack, not an exotic rank.
+    let bits = bits_u64(48);
+    let mut f = Hdf5File::create();
+    f.write_f64("vol", &[2, 2, 3, 4], &bits).expect("write");
+    let g = roundtrip(&f);
+    let (shape, got) = g.read_f64("vol").expect("read");
+    assert_eq!(shape, vec![2, 2, 3, 4]);
+    assert_eq!(got, bits);
+    let (sl, slice_bits) = g.read_f64_slice("vol", 1, 2).expect("slice first axis");
+    assert_eq!(sl, vec![1, 2, 3, 4]);
+    assert_eq!(slice_bits, bits[24..48]);
+}
+
+#[test]
+fn gold_rank5_i32() {
+    // t × channel × z × y × x
+    let n = 2 * 2 * 2 * 2 * 3;
+    let bits: Vec<i32> = (0..n as i32).collect();
+    let mut f = Hdf5File::create();
+    f.write_i32("stack", &[2, 2, 2, 2, 3], &bits)
+        .expect("write");
+    let g = roundtrip(&f);
+    let (shape, got) = g.read_i32("stack").expect("read");
+    assert_eq!(shape, vec![2, 2, 2, 2, 3]);
+    assert_eq!(got, bits);
+}
+
+#[test]
+fn gold_append_rank3() {
+    let a = bits_u64(24);
+    let b = bits_u64(12);
+    let mut f = Hdf5File::create();
+    f.write_f64("t", &[2, 3, 4], &a).expect("write");
+    f.append_f64("t", &[1, 3, 4], &b).expect("append");
+    let g = roundtrip(&f);
+    let (shape, got) = g.read_f64("t").expect("read");
+    assert_eq!(shape, vec![3, 3, 4]);
+    assert_eq!(&got[..24], a.as_slice());
+    assert_eq!(&got[24..], b.as_slice());
+}
+
+#[test]
+fn gold_mixed_rank2_and_rank3() {
+    let table = bits_u64(6);
+    let cube = bits_u64(24);
+    let mut f = Hdf5File::create();
+    f.write_f64("table", &[2, 3], &table).expect("table");
+    f.write_f64("cube", &[2, 3, 4], &cube).expect("cube");
+    let g = roundtrip(&f);
+    let mut names = g.list_datasets();
+    names.sort();
+    assert_eq!(names, vec!["cube", "table"]);
+    assert_eq!(g.read_f64("table").expect("t").1, table);
+    assert_eq!(g.read_f64("cube").expect("c").0, vec![2, 3, 4]);
+}
+
+#[test]
+fn gold_append_i32() {
+    let mut f = Hdf5File::create();
+    f.write_i32("t", &[2, 3], &[0, 1, 2, 3, 4, 5])
+        .expect("write");
+    f.append_i32("t", &[1, 3], &[6, 7, 8]).expect("append");
+    let g = roundtrip(&f);
+    let (shape, got) = g.read_i32("t").expect("read");
+    assert_eq!(shape, vec![3, 3]);
+    assert_eq!(got, vec![0, 1, 2, 3, 4, 5, 6, 7, 8]);
+}
+
+#[test]
+fn gold_write_attr_str() {
+    let mut f = Hdf5File::create();
+    f.write_i32("data", &[2], &[1, 2]).expect("write");
+    f.write_attr_str("data", "units", "counts").expect("attr");
+    let g = roundtrip(&f);
+    assert_eq!(g.read_attr_str("data", "units").expect("units"), "counts");
+    let names: Vec<String> = g
+        .list_attrs("data")
+        .expect("list")
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
+    assert!(names.iter().any(|n| n == "units"));
+}
+
+#[test]
+fn gold_scalar_i32() {
+    let mut f = Hdf5File::create();
+    f.write_i32("n", &[], &[7]).expect("scalar");
+    let g = roundtrip(&f);
+    let (shape, got) = g.read_i32("n").expect("read");
+    assert!(shape.is_empty());
+    assert_eq!(got, vec![7]);
+}
