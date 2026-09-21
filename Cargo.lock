@@ -4,4 +4,4 @@ version = 3
 
 [[package]]
 name = "hdf5-rust"
-version = "1.0.2"
+version = "1.0.4"

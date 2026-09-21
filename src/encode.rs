@@ -160,41 +160,43 @@ pub fn encode_chunked_stub() -> Result<Vec<u8>> {
     crate::buf::push_u32(&mut layout, 1);
     crate::buf::push_u32(&mut layout, 8);
 
-    let mut msgs = Vec::new();
-    msgs.push(RawMsg {
-        ty: HDF5_MSG_DATASPACE,
-        flags: HDF5_MSG_FLAG_CONSTANT,
-        body: encode_dataspace(&[1], false)?,
-    });
-    msgs.push(RawMsg {
-        ty: HDF5_MSG_DATATYPE,
-        flags: HDF5_MSG_FLAG_CONSTANT,
-        body: encode_ieee_f64le(),
-    });
-    msgs.push(RawMsg {
-        ty: HDF5_MSG_LAYOUT,
-        flags: 0,
-        body: layout,
-    });
+    let msgs = vec![
+        RawMsg {
+            ty: HDF5_MSG_DATASPACE,
+            flags: HDF5_MSG_FLAG_CONSTANT,
+            body: encode_dataspace(&[1], false)?,
+        },
+        RawMsg {
+            ty: HDF5_MSG_DATATYPE,
+            flags: HDF5_MSG_FLAG_CONSTANT,
+            body: encode_ieee_f64le(),
+        },
+        RawMsg {
+            ty: HDF5_MSG_LAYOUT,
+            flags: 0,
+            body: layout,
+        },
+    ];
     let ds_ohdr = encode_ohdr_v2(&msgs);
     let ds_addr = HDF5_SUPERBLOCK_V2_SIZE as u64;
 
-    let mut gmsgs = Vec::new();
-    gmsgs.push(RawMsg {
-        ty: HDF5_MSG_LINK_INFO,
-        flags: 0,
-        body: encode_link_info(),
-    });
-    gmsgs.push(RawMsg {
-        ty: HDF5_MSG_GROUP_INFO,
-        flags: 0,
-        body: encode_group_info(),
-    });
-    gmsgs.push(RawMsg {
-        ty: HDF5_MSG_LINK,
-        flags: 0,
-        body: encode_hard_link("data", ds_addr)?,
-    });
+    let gmsgs = vec![
+        RawMsg {
+            ty: HDF5_MSG_LINK_INFO,
+            flags: 0,
+            body: encode_link_info(),
+        },
+        RawMsg {
+            ty: HDF5_MSG_GROUP_INFO,
+            flags: 0,
+            body: encode_group_info(),
+        },
+        RawMsg {
+            ty: HDF5_MSG_LINK,
+            flags: 0,
+            body: encode_hard_link("data", ds_addr)?,
+        },
+    ];
     let g_bytes = encode_ohdr_v2(&gmsgs);
     let g_addr = align8(ds_addr + ds_ohdr.len() as u64);
     let eof = g_addr + g_bytes.len() as u64;

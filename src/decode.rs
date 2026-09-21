@@ -21,75 +21,100 @@ use crate::{
 pub fn decode(data: &[u8]) -> Result<FileModel> {
     let sb = superblock::parse(data)?;
     let mut model = FileModel::new();
-    walk(
+    walk(&mut WalkCtx {
         data,
-        &sb,
-        sb.root_ohdr,
-        "",
-        &mut model,
-        0,
-        sb.root_btree,
-        sb.root_heap,
-    )?;
+        sb: &sb,
+        ohdr: sb.root_ohdr,
+        path: "",
+        model: &mut model,
+        depth: 0,
+        btree: sb.root_btree,
+        heap: sb.root_heap,
+    })?;
     Ok(model)
 }
 
-fn walk(
-    data: &[u8],
-    sb: &superblock::Superblock,
+struct WalkCtx<'a> {
+    data: &'a [u8],
+    sb: &'a superblock::Superblock,
     ohdr: u64,
-    path: &str,
-    model: &mut FileModel,
+    path: &'a str,
+    model: &'a mut FileModel,
     depth: usize,
     btree: Option<u64>,
     heap: Option<u64>,
-) -> Result<()> {
-    if depth > HDF5_MAX_WALK_DEPTH {
+}
+
+fn walk(ctx: &mut WalkCtx<'_>) -> Result<()> {
+    if ctx.depth > HDF5_MAX_WALK_DEPTH {
         return Err(HDF5Error::InvalidHeader);
     }
-    let msgs = parse_ohdr(data, ohdr, sb.offset_size, sb.length_size)?;
-    if let Some(ds) = try_dataset(data, sb, &msgs)? {
-        if !path.is_empty() {
-            model.put_dataset(path, ds)?;
+    let msgs = parse_ohdr(ctx.data, ctx.ohdr, ctx.sb.offset_size, ctx.sb.length_size)?;
+    if let Some(ds) = try_dataset(ctx.data, ctx.sb, &msgs)? {
+        if !ctx.path.is_empty() {
+            ctx.model.put_dataset(ctx.path, ds)?;
         }
         return Ok(());
     }
-    if !path.is_empty() {
-        model.create_group(path)?;
+    if !ctx.path.is_empty() {
+        ctx.model.create_group(ctx.path)?;
     }
     let mut kids: Vec<(String, u64)> = Vec::new();
     if let Some(h) = msgs.iter().find(|m| m.ty == HDF5_MSG_LINK_INFO) {
-        if parse_link_info_heap(&h.body, sb.offset_size)?.is_some() {
+        if parse_link_info_heap(&h.body, ctx.sb.offset_size)?.is_some() {
             return Err(HDF5Error::DenseGroupsNotSupported);
         }
     }
     for m in &msgs {
         if m.ty == HDF5_MSG_LINK {
-            let l = parse_link(&m.body, sb.offset_size)?;
+            let l = parse_link(&m.body, ctx.sb.offset_size)?;
             kids.push((l.name, l.ohdr));
         }
     }
     if kids.is_empty() {
         if let Some(m) = msgs.iter().find(|x| x.ty == HDF5_MSG_SYMBOL_TABLE) {
-            let (bt, hp) = parse_symbol_table(&m.body, sb.offset_size)?;
-            let heap_bytes = read_local_heap(data, hp, sb.offset_size, sb.length_size)?;
-            for c in walk_group_btree(data, bt, heap_bytes, sb.offset_size, sb.length_size, 0)? {
+            let (bt, hp) = parse_symbol_table(&m.body, ctx.sb.offset_size)?;
+            let heap_bytes = read_local_heap(ctx.data, hp, ctx.sb.offset_size, ctx.sb.length_size)?;
+            for c in walk_group_btree(
+                ctx.data,
+                bt,
+                heap_bytes,
+                ctx.sb.offset_size,
+                ctx.sb.length_size,
+                0,
+            )? {
                 kids.push((c.name, c.ohdr));
             }
-        } else if let (Some(bt), Some(hp)) = (btree, heap) {
-            let heap_bytes = read_local_heap(data, hp, sb.offset_size, sb.length_size)?;
-            for c in walk_group_btree(data, bt, heap_bytes, sb.offset_size, sb.length_size, 0)? {
+        } else if let (Some(bt), Some(hp)) = (ctx.btree, ctx.heap) {
+            let heap_bytes = read_local_heap(ctx.data, hp, ctx.sb.offset_size, ctx.sb.length_size)?;
+            for c in walk_group_btree(
+                ctx.data,
+                bt,
+                heap_bytes,
+                ctx.sb.offset_size,
+                ctx.sb.length_size,
+                0,
+            )? {
                 kids.push((c.name, c.ohdr));
             }
         }
     }
     for (name, child) in kids {
-        let child_path = if path.is_empty() {
+        let child_path = if ctx.path.is_empty() {
             name
         } else {
-            alloc::format!("{path}/{name}")
+            alloc::format!("{}/{name}", ctx.path)
         };
-        walk(data, sb, child, &child_path, model, depth + 1, None, None)?;
+        walk(&mut WalkCtx {
+            data: ctx.data,
+            sb: ctx.sb,
+            ohdr: child,
+            path: &child_path,
+            model: ctx.model,
+            depth: ctx.depth + 1,
+            btree: None,
+            heap: None,
+        })?;
     }
     Ok(())
 }

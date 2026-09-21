@@ -93,7 +93,7 @@ impl Hdf5File {
             .model
             .datasets
             .get(&p)
-            .ok_or_else(|| HDF5Error::NotFound(p))?;
+            .ok_or(HDF5Error::NotFound(p))?;
         Ok(ds.kind.to_public())
     }
 
@@ -395,7 +395,7 @@ impl Hdf5File {
             .model
             .datasets
             .get_mut(&p)
-            .ok_or_else(|| HDF5Error::NotFound(p))?;
+            .ok_or(HDF5Error::NotFound(p))?;
         if let Some(slot) = ds.attrs.iter_mut().find(|(n, _)| n == name) {
             slot.1 = value.to_string();
         } else {
@@ -409,7 +409,7 @@ impl Hdf5File {
         self.model
             .datasets
             .get(&p)
-            .ok_or_else(|| HDF5Error::NotFound(p))
+            .ok_or(HDF5Error::NotFound(p))
     }
 
     fn dataset(&self, path: &str) -> Result<&DatasetRec> {

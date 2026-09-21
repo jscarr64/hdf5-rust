@@ -11,12 +11,12 @@ use crate::{
     HDF5_MAX_WALK_DEPTH, HDF5_SNOD_SIGNATURE, HDF5_TREE_SIGNATURE,
 };
 
-pub fn read_local_heap<'a>(
-    data: &'a [u8],
+pub fn read_local_heap(
+    data: &[u8],
     addr: u64,
     offset_size: u8,
     length_size: u8,
-) -> Result<&'a [u8]> {
+) -> Result<&[u8]> {
     let mut r = Reader::new(data, offset_size, length_size)?.at(addr)?;
     let sig = r.bytes(4)?;
     if sig != HDF5_HEAP_SIGNATURE {

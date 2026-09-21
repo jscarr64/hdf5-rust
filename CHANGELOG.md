@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4 — 2026-09-20
+
+Clippy debt clear (`-D warnings`): needless collects, lifetime elision, `WalkCtx` for decode arity, gold cast tidy.
+
 ## 1.0.3 — 2026-09-19
 
 Coordinated patch with zenith-float, latex-rust, and redb-view (pure-Rust FOSS family adjacent to Accumath; Accumath itself stays proprietary).

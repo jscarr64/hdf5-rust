@@ -229,7 +229,7 @@ fn gold_rank4_f64() {
 fn gold_rank5_i32() {
     // t × channel × z × y × x
     let n = 2 * 2 * 2 * 2 * 3;
-    let bits: Vec<i32> = (0..n as i32).collect();
+    let bits: Vec<i32> = (0..n).collect();
     let mut f = Hdf5File::create();
     f.write_i32("stack", &[2, 2, 2, 2, 3], &bits)
         .expect("write");
