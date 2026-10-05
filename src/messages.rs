@@ -6,11 +6,12 @@ use alloc::vec::Vec;
 use crate::buf::{push_u16, push_u32, push_u64, Reader};
 use crate::error::{HDF5Error, Result};
 use crate::{
-    HDF5_ATTR_VERSION, HDF5_CLASS_COMPOUND, HDF5_CLASS_FLOAT, HDF5_CLASS_INTEGER, HDF5_CLASS_OPAQUE,
-    HDF5_CLASS_STRING, HDF5_CLASS_VLEN, HDF5_DATASPACE_VERSION, HDF5_DTYPE_VERSION, HDF5_FILL_VERSION,
-    HDF5_LAYOUT_CHUNKED, HDF5_LAYOUT_COMPACT, HDF5_LAYOUT_CONTIGUOUS, HDF5_LAYOUT_VERSION,
-    HDF5_LINK_VERSION, HDF5_MAX_DIMS, HDF5_MAX_NAME_LEN, HDF5_OPAQUE_TAG, HDF5_SPACE_SCALAR,
-    HDF5_SPACE_SIMPLE, HDF5_UNDEF_ADDR_8, HDF5_UNLIMITED,
+    HDF5_ATTR_VERSION, HDF5_CLASS_COMPOUND, HDF5_CLASS_FLOAT, HDF5_CLASS_INTEGER,
+    HDF5_CLASS_OPAQUE, HDF5_CLASS_STRING, HDF5_CLASS_VLEN, HDF5_DATASPACE_VERSION,
+    HDF5_DTYPE_VERSION, HDF5_FILL_VERSION, HDF5_LAYOUT_CHUNKED, HDF5_LAYOUT_COMPACT,
+    HDF5_LAYOUT_CONTIGUOUS, HDF5_LAYOUT_VERSION, HDF5_LINK_VERSION, HDF5_MAX_DIMS,
+    HDF5_MAX_NAME_LEN, HDF5_OPAQUE_TAG, HDF5_SPACE_SCALAR, HDF5_SPACE_SIMPLE, HDF5_UNDEF_ADDR_8,
+    HDF5_UNLIMITED,
 };
 
 /// In-memory datatype after parsing a datatype message.
@@ -38,15 +39,21 @@ pub enum ParsedDType {
     UInt16Be,
     UInt32Be,
     UInt64Be,
-    Opaque { size: usize },
-    FixedString { size: usize },
+    Opaque {
+        size: usize,
+    },
+    FixedString {
+        size: usize,
+    },
     VlenString,
     /// Compound / structured type with known field layout.
     Compound {
         size: usize,
         fields: Vec<CompoundField>,
     },
-    Other { size: usize },
+    Other {
+        size: usize,
+    },
 }
 
 /// One member of a compound datatype.
@@ -313,12 +320,48 @@ pub fn parse_datatype(body: &[u8]) -> Result<ParsedDType> {
     }
 }
 
+/// Precision and bit offset of an integer datatype, when the message carries them.
+pub struct IntegerBits {
+    /// Significant bits.
+    pub precision: usize,
+    /// Offset of those bits from the least significant bit.
+    pub offset: usize,
+    /// Two's-complement signed integer.
+    pub signed: bool,
+}
+
+/// Integer bit layout from a datatype message, if this is an integer class.
+pub fn integer_bits(body: &[u8]) -> Option<IntegerBits> {
+    if body.len() < 12 {
+        return None;
+    }
+    let class = body[0] & 0x0F;
+    if class != HDF5_CLASS_INTEGER {
+        return None;
+    }
+    let size = u32::from_le_bytes([body[4], body[5], body[6], body[7]]) as usize;
+    let offset = u16::from_le_bytes([body[8], body[9]]) as usize;
+    let precision = u16::from_le_bytes([body[10], body[11]]) as usize;
+    let signed = (body[1] & 0x08) != 0;
+    let width = size.saturating_mul(8);
+    if precision == 0 || precision > width || offset.saturating_add(precision) > width {
+        return None;
+    }
+    Some(IntegerBits {
+        precision,
+        offset,
+        signed,
+    })
+}
+
 fn parse_integer(bit0: u8, size: usize, body: &[u8]) -> Result<ParsedDType> {
     let le = (bit0 & 0x01) == 0;
     let signed = (bit0 & 0x08) != 0;
     if body.len() >= 12 {
+        let offset = u16::from_le_bytes([body[8], body[9]]) as usize;
         let prec = u16::from_le_bytes([body[10], body[11]]) as usize;
-        if prec != size.saturating_mul(8) {
+        let width = size.saturating_mul(8);
+        if prec == 0 || offset.saturating_add(prec) > width {
             return Ok(ParsedDType::Other { size });
         }
     }
@@ -359,8 +402,12 @@ fn parse_compound(body: &[u8], size: usize) -> Result<ParsedDType> {
         }
         // Name is null-terminated; v1 padded to 8 bytes.
         let rest = &body[pos..];
-        let name_end = rest.iter().position(|&b| b == 0).ok_or(HDF5Error::InvalidHeader)?;
-        let name = String::from_utf8(rest[..name_end].to_vec()).map_err(|_| HDF5Error::InvalidHeader)?;
+        let name_end = rest
+            .iter()
+            .position(|&b| b == 0)
+            .ok_or(HDF5Error::InvalidHeader)?;
+        let name =
+            String::from_utf8(rest[..name_end].to_vec()).map_err(|_| HDF5Error::InvalidHeader)?;
         pos += name_end + 1;
         if version == 1 {
             let pad = (8 - ((name_end + 1) % 8)) % 8;
@@ -369,7 +416,8 @@ fn parse_compound(body: &[u8], size: usize) -> Result<ParsedDType> {
         if pos + 4 > body.len() {
             return Err(HDF5Error::Truncated);
         }
-        let offset = u32::from_le_bytes([body[pos], body[pos + 1], body[pos + 2], body[pos + 3]]) as usize;
+        let offset =
+            u32::from_le_bytes([body[pos], body[pos + 1], body[pos + 2], body[pos + 3]]) as usize;
         pos += 4;
         if version == 1 {
             // v1: ndims(1) + reserved(3) + permutation(4) + reserved(4)
@@ -384,7 +432,8 @@ fn parse_compound(body: &[u8], size: usize) -> Result<ParsedDType> {
             return Err(HDF5Error::Truncated);
         }
         // Member datatype is embedded recursively; size at bytes 4..8 of member header.
-        let msize = u32::from_le_bytes([body[pos + 4], body[pos + 5], body[pos + 6], body[pos + 7]]) as usize;
+        let msize = u32::from_le_bytes([body[pos + 4], body[pos + 5], body[pos + 6], body[pos + 7]])
+            as usize;
         let member_body = &body[pos..];
         let member_dt = parse_datatype(member_body)?;
         let member_total = datatype_message_len(member_body)?;
@@ -449,7 +498,10 @@ fn datatype_message_len(body: &[u8]) -> Result<usize> {
             let mut pos = 8usize;
             for _ in 0..nmembers {
                 let rest = &body[pos..];
-                let name_end = rest.iter().position(|&b| b == 0).ok_or(HDF5Error::InvalidHeader)?;
+                let name_end = rest
+                    .iter()
+                    .position(|&b| b == 0)
+                    .ok_or(HDF5Error::InvalidHeader)?;
                 pos += name_end + 1;
                 if version == 1 {
                     pos += (8 - ((name_end + 1) % 8)) % 8;
@@ -516,8 +568,13 @@ pub fn parse_dataspace(body: &[u8], length_size: u8) -> Result<ParsedSpace> {
 }
 
 pub enum ParsedLayout {
-    Contiguous { addr: u64, size: u64 },
-    Compact { data: Vec<u8> },
+    Contiguous {
+        addr: u64,
+        size: u64,
+    },
+    Compact {
+        data: Vec<u8>,
+    },
     /// Chunked storage. `index` describes how to find chunks.
     Chunked {
         chunk_dims: Vec<u32>,
@@ -591,7 +648,7 @@ pub fn parse_layout(body: &[u8], offset_size: u8, length_size: u8) -> Result<Par
                 _ => Err(HDF5Error::InvalidHeader),
             }
         }
-        4 => {
+        4 | 5 => {
             let class = r.u8()?;
             match class {
                 HDF5_LAYOUT_CHUNKED => {
@@ -631,10 +688,23 @@ pub fn parse_layout(body: &[u8], offset_size: u8, length_size: u8) -> Result<Par
                             let addr = r.addr()?;
                             crate::chunk_index::ChunkIndex::FixedArray { addr }
                         }
-                        2 | 4 | 5 => {
-                            // Implicit / extensible array / v2 B-tree: honest stop.
-                            let _ = r.addr()?;
-                            return Err(HDF5Error::ChunkedNotSupported);
+                        2 => {
+                            let addr = r.addr()?;
+                            crate::chunk_index::ChunkIndex::Implicit { addr }
+                        }
+                        4 => {
+                            // max_nelmts_bits, idx_blk_elmts, sup_blk_min, data_blk_min, page bits.
+                            r.skip(5)?;
+                            let addr = r.addr()?;
+                            crate::chunk_index::ChunkIndex::ExtensibleArray { addr }
+                        }
+                        5 => {
+                            // node size, split percent, merge percent; the header is authoritative.
+                            r.u32()?;
+                            r.u8()?;
+                            r.u8()?;
+                            let addr = r.addr()?;
+                            crate::chunk_index::ChunkIndex::BTreeV2 { addr }
                         }
                         _ => return Err(HDF5Error::ChunkedNotSupported),
                     };

@@ -11,10 +11,11 @@ pub enum HDF5Error {
     InvalidSignature,
     /// Superblock or object-header version this crate does not read.
     UnsupportedVersion(u8),
-    /// Dataset storage layout is chunked and this crate could not materialize it
-    /// (no B-tree, layout v4 index, or empty chunk index).
+    /// Chunk index this crate does not walk (paged extensible-array blocks,
+    /// or an index kind outside single / implicit / fixed / extensible / B-tree v1 / v2).
     ChunkedNotSupported,
-    /// Dataset uses an HDF5 filter (deflate/gzip, shuffle, …).
+    /// Filter this crate does not decode (SZIP, floating-point scale-offset,
+    /// n-bit array/compound, or an unknown filter id).
     FilteredNotSupported,
     /// Datatype cannot be written back (compound, big-endian, …).
     UnsupportedDtype,

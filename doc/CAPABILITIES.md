@@ -1,7 +1,7 @@
 # hdf5-rust capabilities
 
 **Last updated:** 2026-10-05
-**Crate version:** 1.1.0
+**Crate version:** 1.1.1
 
 Independent HDF5 implementation. Not a wrapper. Not affiliated with The HDF Group. **Zero crate dependencies.**
 
@@ -37,9 +37,13 @@ Independent HDF5 implementation. Not a wrapper. Not affiliated with The HDF Grou
 | Uncompressed chunked read (B-tree v1) | ✅ |
 | Layout v4 single-chunk index | ✅ |
 | Layout v4 fixed-array index (FAHD/FADB) | ✅ |
-| Layout v4 extensible-array / implicit / B-tree v2 | ⬜ → `ChunkedNotSupported` |
+| Implicit chunk index | ✅ |
+| Extensible-array index (unpaged data blocks) | ✅ |
+| B-tree v2 chunk index (leaf and internal) | ✅ |
+| Paged extensible-array data blocks | ⬜ → `ChunkedNotSupported` |
 | Gzip/deflate filter on chunked read | ✅ |
-| Other filters (shuffle, szip, …) | ⬜ → `FilteredNotSupported` |
+| Shuffle, Fletcher32, atomic n-bit, integer scale-offset | ✅ |
+| SZIP, floating-point scale-offset, n-bit array/compound | ⬜ → `FilteredNotSupported` |
 | Append along first dimension | ✅ |
 
 ## Groups and attributes

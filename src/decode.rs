@@ -3,14 +3,17 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::btree::{read_gheap_object, read_local_heap, walk_chunk_btree, walk_group_btree, ChunkRef};
+use crate::btree::{
+    read_gheap_object, read_local_heap, walk_chunk_btree, walk_group_btree, ChunkRef,
+};
 use crate::buf::Reader;
 use crate::chunk_index::{self, ChunkIndex};
 use crate::error::{HDF5Error, Result};
 use crate::filter::{apply_filters, parse_filters, FilterDesc};
 use crate::messages::{
-    parse_attribute, parse_dataspace, parse_datatype, parse_layout, parse_link,
-    parse_link_info_heap, parse_symbol_table, CompoundField, ParsedDType, ParsedLayout,
+    integer_bits, parse_attribute, parse_dataspace, parse_datatype, parse_layout, parse_link,
+    parse_link_info_heap, parse_symbol_table, CompoundField, IntegerBits, ParsedDType,
+    ParsedLayout,
 };
 use crate::model::{DTypeKind, DatasetRec, FileModel};
 use crate::ohdr::{parse_ohdr, RawMsg};
@@ -162,6 +165,7 @@ fn try_dataset(
     }
     let fields = compound_fields_of(&dtype);
     let (kind, needs_swap) = dtype_kind_swap(dtype);
+    let bits = integer_bits(&dtype_m.body);
     match layout {
         ParsedLayout::Chunked { chunk_dims, index } => {
             let assembled = assemble_chunks(
@@ -175,9 +179,7 @@ fn try_dataset(
             );
             match assembled {
                 Ok(mut raw) => {
-                    if needs_swap {
-                        bswap_inplace(&mut raw, kind.elem_size());
-                    }
+                    finish_numeric(&mut raw, needs_swap, kind.elem_size(), bits.as_ref());
                     Ok(Some(DatasetRec {
                         shape: space.dims,
                         kind,
@@ -211,9 +213,7 @@ fn try_dataset(
         }
         ParsedLayout::Compact { data: raw } => {
             let mut raw = raw;
-            if needs_swap {
-                bswap_inplace(&mut raw, kind.elem_size());
-            }
+            finish_numeric(&mut raw, needs_swap, kind.elem_size(), bits.as_ref());
             Ok(Some(make_rec(kind, space.dims, raw, attrs, fields.clone())))
         }
         ParsedLayout::Contiguous { addr, size } => {
@@ -229,9 +229,7 @@ fn try_dataset(
                     .slice_at(addr, n)?
                     .to_vec()
             };
-            if needs_swap {
-                bswap_inplace(&mut raw, kind.elem_size());
-            }
+            finish_numeric(&mut raw, needs_swap, kind.elem_size(), bits.as_ref());
             Ok(Some(make_rec(kind, space.dims, raw, attrs, fields)))
         }
     }
@@ -275,6 +273,74 @@ fn compound_fields_of(dtype: &ParsedDType) -> Vec<CompoundField> {
     match dtype {
         ParsedDType::Compound { fields, .. } => fields.clone(),
         _ => Vec::new(),
+    }
+}
+
+fn finish_numeric(raw: &mut [u8], needs_swap: bool, elem: usize, bits: Option<&IntegerBits>) {
+    if needs_swap {
+        bswap_inplace(raw, elem);
+    }
+    if let Some(bits) = bits {
+        narrow_integer_lanes(raw, elem, bits.precision, bits.offset, bits.signed);
+    }
+}
+
+/// Shift a narrowed integer down to bit 0 and sign-extend when it is signed.
+/// N-bit (and any short-precision integer) leaves padding bits clear.
+fn narrow_integer_lanes(
+    data: &mut [u8],
+    elem: usize,
+    precision: usize,
+    offset: usize,
+    signed: bool,
+) {
+    let width = elem.saturating_mul(8);
+    if elem == 0 || elem > 8 || precision == 0 || precision > width || offset + precision > width {
+        return;
+    }
+    if precision == width && offset == 0 {
+        return;
+    }
+    for slot in data.chunks_exact_mut(elem) {
+        let raw = read_uint_le(slot);
+        let shifted = raw >> offset;
+        let mask = if precision >= 64 {
+            u64::MAX
+        } else {
+            (1u64 << precision) - 1
+        };
+        let bits = shifted & mask;
+        let value = if signed {
+            sign_extend_bits(bits, precision)
+        } else {
+            bits
+        };
+        write_uint_le(slot, value);
+    }
+}
+
+fn read_uint_le(buf: &[u8]) -> u64 {
+    let mut tmp = [0u8; 8];
+    tmp[..buf.len()].copy_from_slice(buf);
+    u64::from_le_bytes(tmp)
+}
+
+fn write_uint_le(buf: &mut [u8], v: u64) {
+    let bytes = v.to_le_bytes();
+    buf.copy_from_slice(&bytes[..buf.len()]);
+}
+
+fn sign_extend_bits(v: u64, precision: usize) -> u64 {
+    if precision == 0 || precision >= 64 {
+        return v;
+    }
+    let sign = 1u64 << (precision - 1);
+    let mask = (1u64 << precision) - 1;
+    let x = v & mask;
+    if x & sign != 0 {
+        x | !mask
+    } else {
+        x
     }
 }
 
@@ -367,6 +433,40 @@ fn assemble_chunks(
                 0,
             )?
         }
+        ChunkIndex::Implicit { addr } => {
+            if !filters.is_empty() {
+                return Err(HDF5Error::ChunkedNotSupported);
+            }
+            let r = Reader::new(data, sb.offset_size, sb.length_size)?;
+            if r.is_undef(*addr) {
+                return Err(HDF5Error::ChunkedNotSupported);
+            }
+            chunk_index::walk_implicit(*addr, shape, chunk_dims, full_chunk_u32)?
+        }
+        ChunkIndex::ExtensibleArray { addr } => {
+            let r = Reader::new(data, sb.offset_size, sb.length_size)?;
+            if r.is_undef(*addr) {
+                return Err(HDF5Error::ChunkedNotSupported);
+            }
+            crate::earray::walk_extensible_array(
+                data,
+                *addr,
+                sb.offset_size,
+                sb.length_size,
+                shape,
+                chunk_dims,
+                full_chunk_u32,
+            )?
+        }
+        ChunkIndex::BTreeV2 { addr } => crate::btree2::walk_btree_v2(
+            data,
+            *addr,
+            sb.offset_size,
+            sb.length_size,
+            shape,
+            chunk_dims,
+            full_chunk_u32,
+        )?,
     };
 
     let nbytes = elem_count(shape)
@@ -395,7 +495,12 @@ fn assemble_chunks(
         } else if filters.is_empty() && ch.filter_mask != 0 {
             return Err(HDF5Error::FilteredNotSupported);
         } else {
-            apply_filters(raw.to_vec(), filters, ch.filter_mask, full_chunk_u32 as usize)?
+            apply_filters(
+                raw.to_vec(),
+                filters,
+                ch.filter_mask,
+                full_chunk_u32 as usize,
+            )?
         };
         copy_chunk(&mut out, shape, elem, &ch.offset, &spatial, &decoded)?;
     }

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.1 — 2026-10-05
+
+### Added
+- Layout v4/v5 chunk indexes: implicit, extensible array (unpaged `EAHD`/`EAIB`/`EADB`/`EASB`), and B-tree v2 (`BTHD`/`BTLF`/`BTIN`, including internal nodes).
+- Filters besides gzip: shuffle, Fletcher32, atomic n-bit, and integer scale-offset. Pipeline order and per-chunk filter masks are honoured.
+
+### Still unsupported (honest errors)
+- SZIP (Rice / libaec bitstream) → `FilteredNotSupported`.
+- Floating-point scale-offset (needs hardware float arithmetic) → `FilteredNotSupported`.
+- N-bit on array or compound datatypes → `FilteredNotSupported`.
+- Paged extensible-array data blocks → `ChunkedNotSupported`.
+
 ## 1.1.0 — 2026-10-05
 
 ### Added
