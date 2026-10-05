@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (depth on 1.0.5)
+## 1.1.0 — 2026-10-05
 
 ### Added
 - Pure-Rust zlib inflate for HDF5 deflate/gzip chunked reads (still zero crate deps).
