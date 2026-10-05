@@ -123,7 +123,7 @@ pub fn encode_dataspace(dims: &[u64], unlimited_first: bool) -> Result<Vec<u8>> 
     if dims.is_empty() {
         return Ok(alloc::vec![HDF5_DATASPACE_VERSION, 0, 0, HDF5_SPACE_SCALAR]);
     }
-    let mut v = vec![
+    let mut v = alloc::vec![
         HDF5_DATASPACE_VERSION,
         dims.len() as u8,
         1,
