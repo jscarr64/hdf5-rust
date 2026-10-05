@@ -608,7 +608,7 @@ fn gold_read_h5py_implicit_and_filters() {
         &[8],
         &(0..8).collect::<Vec<_>>(),
     );
-    expect_i32("h5py_nbit.h5", &[4], &[0, 1, 100, 4095]);
+    expect_i32("h5py_nbit.h5", &[5], &[0, 1, 100, -5, 2047]);
     expect_i32(
         "h5py_scaleoffset_i32.h5",
         &[8],

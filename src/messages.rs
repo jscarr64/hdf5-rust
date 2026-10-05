@@ -320,12 +320,48 @@ pub fn parse_datatype(body: &[u8]) -> Result<ParsedDType> {
     }
 }
 
+/// Precision and bit offset of an integer datatype, when the message carries them.
+pub struct IntegerBits {
+    /// Significant bits.
+    pub precision: usize,
+    /// Offset of those bits from the least significant bit.
+    pub offset: usize,
+    /// Two's-complement signed integer.
+    pub signed: bool,
+}
+
+/// Integer bit layout from a datatype message, if this is an integer class.
+pub fn integer_bits(body: &[u8]) -> Option<IntegerBits> {
+    if body.len() < 12 {
+        return None;
+    }
+    let class = body[0] & 0x0F;
+    if class != HDF5_CLASS_INTEGER {
+        return None;
+    }
+    let size = u32::from_le_bytes([body[4], body[5], body[6], body[7]]) as usize;
+    let offset = u16::from_le_bytes([body[8], body[9]]) as usize;
+    let precision = u16::from_le_bytes([body[10], body[11]]) as usize;
+    let signed = (body[1] & 0x08) != 0;
+    let width = size.saturating_mul(8);
+    if precision == 0 || precision > width || offset.saturating_add(precision) > width {
+        return None;
+    }
+    Some(IntegerBits {
+        precision,
+        offset,
+        signed,
+    })
+}
+
 fn parse_integer(bit0: u8, size: usize, body: &[u8]) -> Result<ParsedDType> {
     let le = (bit0 & 0x01) == 0;
     let signed = (bit0 & 0x08) != 0;
     if body.len() >= 12 {
+        let offset = u16::from_le_bytes([body[8], body[9]]) as usize;
         let prec = u16::from_le_bytes([body[10], body[11]]) as usize;
-        if prec != size.saturating_mul(8) {
+        let width = size.saturating_mul(8);
+        if prec == 0 || offset.saturating_add(prec) > width {
             return Ok(ParsedDType::Other { size });
         }
     }

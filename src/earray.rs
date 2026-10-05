@@ -4,6 +4,7 @@
 //! Data blocks larger than one page (HDF5 paging) are refused: guessing a
 //! page layout would invent chunk addresses.
 
+use alloc::collections::btree_map::Entry;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
@@ -107,14 +108,16 @@ pub fn walk_extensible_array(
                     .get(dblk)
                     .ok_or(HDF5Error::InvalidHeader)?;
                 element_bytes(
-                    data,
+                    &FileBytes {
+                        data,
+                        offset_size,
+                        length_size,
+                    },
                     &hdr,
                     &mut dblks,
                     addr,
                     offset,
                     nelmts,
-                    offset_size,
-                    length_size,
                 )?
             }
             Loc::Super {
@@ -139,14 +142,16 @@ pub fn walk_extensible_array(
                 )?;
                 let addr = *daddrs.get(local_dblk).ok_or(HDF5Error::InvalidHeader)?;
                 element_bytes(
-                    data,
+                    &FileBytes {
+                        data,
+                        offset_size,
+                        length_size,
+                    },
                     &hdr,
                     &mut dblks,
                     addr,
                     offset,
                     nelmts,
-                    offset_size,
-                    length_size,
                 )?
             }
         };
@@ -350,21 +355,34 @@ fn locate(geo: &Geometry, idx: u64) -> Result<Loc> {
     }
 }
 
+struct FileBytes<'a> {
+    data: &'a [u8],
+    offset_size: u8,
+    length_size: u8,
+}
+
 fn element_bytes(
-    data: &[u8],
+    src: &FileBytes<'_>,
     hdr: &Header,
     cache: &mut BTreeMap<u64, Vec<u8>>,
     addr: u64,
     offset: u64,
     nelmts: u64,
-    offset_size: u8,
-    length_size: u8,
 ) -> Result<Vec<u8>> {
-    if !cache.contains_key(&addr) {
-        let bytes = load_dblk(data, hdr, addr, nelmts, offset_size, length_size)?;
-        cache.insert(addr, bytes);
-    }
-    let block = cache.get(&addr).ok_or(HDF5Error::InvalidHeader)?;
+    let block = match cache.entry(addr) {
+        Entry::Occupied(hit) => hit.into_mut(),
+        Entry::Vacant(hole) => {
+            let bytes = load_dblk(
+                src.data,
+                hdr,
+                addr,
+                nelmts,
+                src.offset_size,
+                src.length_size,
+            )?;
+            hole.insert(bytes)
+        }
+    };
     if block.is_empty() {
         return Ok(alloc::vec![0xff; hdr.elmt_size]);
     }

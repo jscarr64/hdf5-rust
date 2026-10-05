@@ -61,19 +61,22 @@ pub fn walk_btree_v2(
     }
     let spatial = spatial_chunk_dims(shape, chunk_dims)?;
     let levels = node_levels(&hdr, offset_size)?;
+    let walk = NodeWalk {
+        data,
+        hdr: &hdr,
+        levels: &levels,
+        offset_size,
+        length_size,
+        spatial: &spatial,
+        ndims_key: chunk_dims.len(),
+        full_chunk,
+    };
     let mut chunks = Vec::new();
     walk_node(
-        data,
-        &hdr,
-        &levels,
+        &walk,
         hdr.root_addr,
         u64::from(hdr.root_nrec),
         hdr.depth,
-        offset_size,
-        length_size,
-        &spatial,
-        chunk_dims.len(),
-        full_chunk,
         &mut chunks,
         0,
     )?;
@@ -160,115 +163,91 @@ fn node_levels(hdr: &Header, offset_size: u8) -> Result<Vec<Level>> {
     Ok(levels)
 }
 
+struct NodeWalk<'a> {
+    data: &'a [u8],
+    hdr: &'a Header,
+    levels: &'a [Level],
+    offset_size: u8,
+    length_size: u8,
+    spatial: &'a [u32],
+    ndims_key: usize,
+    full_chunk: u32,
+}
+
 fn walk_node(
-    data: &[u8],
-    hdr: &Header,
-    levels: &[Level],
+    w: &NodeWalk<'_>,
     addr: u64,
     nrec: u64,
     depth: u16,
-    offset_size: u8,
-    length_size: u8,
-    spatial: &[u32],
-    ndims_key: usize,
-    full_chunk: u32,
     out: &mut Vec<ChunkRef>,
     walk_depth: usize,
 ) -> Result<()> {
     if walk_depth > HDF5_MAX_WALK_DEPTH {
         return Err(HDF5Error::InvalidHeader);
     }
-    let rdr = Reader::new(data, offset_size, length_size)?;
+    let rdr = Reader::new(w.data, w.offset_size, w.length_size)?;
     if rdr.is_undef(addr) {
         return Err(HDF5Error::InvalidHeader);
     }
     let nrec_us = usize::try_from(nrec).map_err(|_| HDF5Error::InvalidHeader)?;
     if depth == 0 {
-        let body = 6 + nrec_us * hdr.record_size as usize;
+        let body = 6 + nrec_us * w.hdr.record_size as usize;
         let bytes = rdr.slice_at(addr, (body + 4) as u64)?;
-        if bytes[..4] != BTLF || bytes[4] != 0 || bytes[5] != hdr.record_type {
+        if bytes[..4] != BTLF || bytes[4] != 0 || bytes[5] != w.hdr.record_type {
             return Err(HDF5Error::InvalidHeader);
         }
         check_sum(&bytes[..body], &bytes[body..body + 4])?;
         for i in 0..nrec_us {
-            let start = 6 + i * hdr.record_size as usize;
-            let rec = &bytes[start..start + hdr.record_size as usize];
+            let start = 6 + i * w.hdr.record_size as usize;
+            let rec = &bytes[start..start + w.hdr.record_size as usize];
             out.push(decode_record(
                 rec,
-                hdr.record_type,
-                offset_size,
-                spatial,
-                ndims_key,
-                full_chunk,
+                w.hdr.record_type,
+                w.offset_size,
+                w.spatial,
+                w.ndims_key,
+                w.full_chunk,
             )?);
         }
         return Ok(());
     }
-    let child_extra = levels
+    let child_extra = w
+        .levels
         .get(depth as usize - 1)
         .ok_or(HDF5Error::InvalidHeader)?
         .cum_max_nrec_size as usize;
-    let max_nrec_size = enc_size(levels[0].max_nrec) as usize;
-    let ptr = offset_size as usize + max_nrec_size + child_extra;
+    let max_nrec_size = enc_size(w.levels[0].max_nrec) as usize;
+    let ptr = w.offset_size as usize + max_nrec_size + child_extra;
     let nchild = nrec_us + 1;
-    let body = 6 + nrec_us * hdr.record_size as usize + nchild * ptr;
+    let body = 6 + nrec_us * w.hdr.record_size as usize + nchild * ptr;
     let bytes = rdr.slice_at(addr, (body + 4) as u64)?;
-    if bytes[..4] != BTIN || bytes[4] != 0 || bytes[5] != hdr.record_type {
+    if bytes[..4] != BTIN || bytes[4] != 0 || bytes[5] != w.hdr.record_type {
         return Err(HDF5Error::InvalidHeader);
     }
     check_sum(&bytes[..body], &bytes[body..body + 4])?;
-    let mut child_at = 6 + nrec_us * hdr.record_size as usize;
+    let mut child_at = 6 + nrec_us * w.hdr.record_size as usize;
     let mut children = Vec::with_capacity(nchild);
     for _ in 0..nchild {
         let c = &bytes[child_at..child_at + ptr];
-        let caddr = take_le(c, offset_size as usize)?;
-        let cnrec = take_le(&c[offset_size as usize..], max_nrec_size)?;
+        let caddr = take_le(c, w.offset_size as usize)?;
+        let cnrec = take_le(&c[w.offset_size as usize..], max_nrec_size)?;
         children.push((caddr, cnrec));
         child_at += ptr;
     }
-    for i in 0..nrec_us {
-        let (caddr, cnrec) = children[i];
-        walk_node(
-            data,
-            hdr,
-            levels,
-            caddr,
-            cnrec,
-            depth - 1,
-            offset_size,
-            length_size,
-            spatial,
-            ndims_key,
-            full_chunk,
-            out,
-            walk_depth + 1,
-        )?;
-        let start = 6 + i * hdr.record_size as usize;
+    for (i, &(caddr, cnrec)) in children.iter().enumerate().take(nrec_us) {
+        walk_node(w, caddr, cnrec, depth - 1, out, walk_depth + 1)?;
+        let start = 6 + i * w.hdr.record_size as usize;
         out.push(decode_record(
-            &bytes[start..start + hdr.record_size as usize],
-            hdr.record_type,
-            offset_size,
-            spatial,
-            ndims_key,
-            full_chunk,
+            &bytes[start..start + w.hdr.record_size as usize],
+            w.hdr.record_type,
+            w.offset_size,
+            w.spatial,
+            w.ndims_key,
+            w.full_chunk,
         )?);
     }
     let (caddr, cnrec) = children[nrec_us];
-    walk_node(
-        data,
-        hdr,
-        levels,
-        caddr,
-        cnrec,
-        depth - 1,
-        offset_size,
-        length_size,
-        spatial,
-        ndims_key,
-        full_chunk,
-        out,
-        walk_depth + 1,
-    )?;
+    walk_node(w, caddr, cnrec, depth - 1, out, walk_depth + 1)?;
     Ok(())
 }
 

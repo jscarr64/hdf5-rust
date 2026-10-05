@@ -219,10 +219,15 @@ fn check_fletcher32(data: &[u8]) -> Result<Vec<u8>> {
         return Err(HDF5Error::InvalidHeader);
     }
     let (payload, tail) = data.split_at(data.len() - 4);
-    let stored = u32::from_be_bytes([tail[0], tail[1], tail[2], tail[3]]);
+    let bytes = [tail[0], tail[1], tail[2], tail[3]];
+    // HDF5 1.x stored this word big-endian. HDF5 2.0 on a little-endian
+    // writer stores the native (little-endian) word. Accept either, and the
+    // pair-swapped value written before 1.6.3.
+    let stored_le = u32::from_le_bytes(bytes);
+    let stored_be = u32::from_be_bytes(bytes);
     let got = fletcher32(payload);
     let reversed = reversed_fletcher(got);
-    if stored != got && stored != reversed {
+    if stored_le != got && stored_be != got && stored_le != reversed && stored_be != reversed {
         return Err(HDF5Error::InvalidHeader);
     }
     Ok(payload.to_vec())
@@ -259,83 +264,73 @@ fn decode_nbit(data: &[u8], cd: &[u32]) -> Result<Vec<u8>> {
     if precision == 0 || precision > type_bits || precision.saturating_add(offset) > type_bits {
         return Err(HDF5Error::InvalidHeader);
     }
+    let spec = NbitSpec {
+        size,
+        order,
+        precision,
+        offset,
+    };
     let out_len = d_nelmts.checked_mul(size).ok_or(HDF5Error::InvalidHeader)?;
     let mut out = alloc::vec![0u8; out_len];
-    let mut j = 0usize;
-    let mut buf_len = 8u32;
+    let mut bits = BitIn {
+        buffer: data,
+        j: 0,
+        buf_len: 8,
+    };
     for i in 0..d_nelmts {
-        nbit_one_atomic(
-            &mut out,
-            i * size,
-            data,
-            &mut j,
-            &mut buf_len,
-            size,
-            order,
-            precision,
-            offset,
-        )?;
+        nbit_one_atomic(&mut out, i * size, &mut bits, &spec)?;
     }
     Ok(out)
+}
+
+struct NbitSpec {
+    size: usize,
+    order: u32,
+    precision: u32,
+    offset: u32,
+}
+
+struct BitIn<'a> {
+    buffer: &'a [u8],
+    j: usize,
+    buf_len: u32,
+}
+
+impl BitIn<'_> {
+    fn bump(&mut self) {
+        self.j += 1;
+        self.buf_len = 8;
+    }
 }
 
 fn nbit_one_atomic(
     data: &mut [u8],
     data_offset: usize,
-    buffer: &[u8],
-    j: &mut usize,
-    buf_len: &mut u32,
-    size: usize,
-    order: u32,
-    precision: u32,
-    offset: u32,
+    bits: &mut BitIn<'_>,
+    spec: &NbitSpec,
 ) -> Result<()> {
-    let datatype_len = (size as u32).saturating_mul(8);
-    if order == 0 {
-        let begin_i = if (precision + offset) % 8 != 0 {
-            (precision + offset) / 8
+    let datatype_len = (spec.size as u32).saturating_mul(8);
+    if spec.order == 0 {
+        let begin_i = if (spec.precision + spec.offset) % 8 != 0 {
+            (spec.precision + spec.offset) / 8
         } else {
-            (precision + offset) / 8 - 1
+            (spec.precision + spec.offset) / 8 - 1
         };
-        let end_i = offset / 8;
+        let end_i = spec.offset / 8;
         let mut k = begin_i as i32;
         while k >= end_i as i32 {
-            nbit_one_byte(
-                data,
-                data_offset,
-                k as u32,
-                begin_i,
-                end_i,
-                buffer,
-                j,
-                buf_len,
-                precision,
-                offset,
-                datatype_len,
-            )?;
+            nbit_one_byte(data, data_offset, k as u32, begin_i, end_i, bits, spec)?;
             k -= 1;
         }
     } else {
-        let begin_i = (datatype_len - precision - offset) / 8;
-        let end_i = if offset % 8 != 0 {
-            (datatype_len - offset) / 8
+        let begin_i = (datatype_len - spec.precision - spec.offset) / 8;
+        let end_i = if spec.offset % 8 != 0 {
+            (datatype_len - spec.offset) / 8
         } else {
-            (datatype_len - offset) / 8 - 1
+            (datatype_len - spec.offset) / 8 - 1
         };
         for k in begin_i..=end_i {
-            nbit_one_byte(
-                data,
-                data_offset,
-                k,
-                begin_i,
-                end_i,
-                buffer,
-                j,
-                buf_len,
-                precision,
-                offset,
-                datatype_len,
-            )?;
+            nbit_one_byte(data, data_offset, k, begin_i, end_i, bits, spec)?;
         }
     }
     Ok(())
@@ -347,52 +342,51 @@ fn nbit_one_byte(
     k: u32,
     begin_i: u32,
     end_i: u32,
-    buffer: &[u8],
-    j: &mut usize,
-    buf_len: &mut u32,
-    precision: u32,
-    offset: u32,
-    datatype_len: u32,
+    bits: &mut BitIn<'_>,
+    spec: &NbitSpec,
 ) -> Result<()> {
     let at = data_offset + k as usize;
-    if at >= data.len() || *j >= buffer.len() {
+    if at >= data.len() || bits.j >= bits.buffer.len() {
         return Err(HDF5Error::InvalidHeader);
     }
-    let mut val = buffer[*j];
+    let mut val = bits.buffer[bits.j];
     let (dat_len, dat_offset) = if begin_i != end_i {
         if k == begin_i {
-            (8 - (datatype_len - precision - offset) % 8, 0u32)
+            (
+                8 - (spec.size as u32 * 8 - spec.precision - spec.offset) % 8,
+                0u32,
+            )
         } else if k == end_i {
-            let dat_len = 8 - offset % 8;
+            let dat_len = 8 - spec.offset % 8;
             (dat_len, 8 - dat_len)
         } else {
             (8u32, 0u32)
         }
     } else {
-        (precision, offset % 8)
+        (spec.precision, spec.offset % 8)
     };
     if dat_len == 0 || dat_len > 8 {
         return Err(HDF5Error::InvalidHeader);
     }
-    if *buf_len > dat_len {
-        data[at] =
-            (((u32::from(val) >> (*buf_len - dat_len)) & mask_bits(dat_len)) << dat_offset) as u8;
-        *buf_len -= dat_len;
+    if bits.buf_len > dat_len {
+        data[at] = (((u32::from(val) >> (bits.buf_len - dat_len)) & mask_bits(dat_len))
+            << dat_offset) as u8;
+        bits.buf_len -= dat_len;
     } else {
-        data[at] =
-            ((u32::from(val & low_mask_u8(*buf_len)) << (dat_len - *buf_len)) << dat_offset) as u8;
-        let left = dat_len - *buf_len;
-        *j += 1;
-        *buf_len = 8;
+        data[at] = ((u32::from(val & low_mask_u8(bits.buf_len)) << (dat_len - bits.buf_len))
+            << dat_offset) as u8;
+        let left = dat_len - bits.buf_len;
+        bits.bump();
         if left == 0 {
             return Ok(());
         }
-        if *j >= buffer.len() {
+        if bits.j >= bits.buffer.len() {
             return Err(HDF5Error::InvalidHeader);
         }
-        val = buffer[*j];
-        data[at] |= (((u32::from(val) >> (*buf_len - left)) & mask_bits(left)) << dat_offset) as u8;
-        *buf_len -= left;
+        val = bits.buffer[bits.j];
+        data[at] |=
+            (((u32::from(val) >> (bits.buf_len - left)) & mask_bits(left)) << dat_offset) as u8;
+        bits.buf_len -= left;
     }
     Ok(())
 }
@@ -530,10 +524,13 @@ fn scaleoffset_unpack(
     size: usize,
     minbits: u32,
 ) -> Result<()> {
-    let mut j = 0usize;
-    let mut buf_len = 8u32;
+    let mut bits = BitIn {
+        buffer,
+        j: 0,
+        buf_len: 8,
+    };
     for i in 0..d_nelmts {
-        so_one_atomic(out, i * size, buffer, &mut j, &mut buf_len, size, minbits)?;
+        so_one_atomic(out, i * size, &mut bits, size, minbits)?;
     }
     Ok(())
 }
@@ -541,9 +538,7 @@ fn scaleoffset_unpack(
 fn so_one_atomic(
     data: &mut [u8],
     data_offset: usize,
-    buffer: &[u8],
-    j: &mut usize,
-    buf_len: &mut u32,
+    bits: &mut BitIn<'_>,
     size: usize,
     minbits: u32,
 ) -> Result<()> {
@@ -553,12 +548,9 @@ fn so_one_atomic(
     while k >= 0 {
         so_one_byte(
             data,
-            data_offset,
-            k as u32,
+            data_offset + k as usize,
+            &mut *bits,
             begin_i,
-            buffer,
-            j,
-            buf_len,
             minbits,
             dtype_len,
         )?;
@@ -569,45 +561,38 @@ fn so_one_atomic(
 
 fn so_one_byte(
     data: &mut [u8],
-    data_offset: usize,
-    k: u32,
+    at: usize,
+    bits: &mut BitIn<'_>,
     begin_i: u32,
-    buffer: &[u8],
-    j: &mut usize,
-    buf_len: &mut u32,
     minbits: u32,
     dtype_len: u32,
 ) -> Result<()> {
-    let at = data_offset + k as usize;
-    if at >= data.len() || *j >= buffer.len() {
+    if at >= data.len() || bits.j >= bits.buffer.len() {
         return Err(HDF5Error::InvalidHeader);
     }
-    let mut val = buffer[*j];
-    let mut dat_len = if k == begin_i {
+    let mut val = bits.buffer[bits.j];
+    let on_first = at % (dtype_len as usize / 8) == begin_i as usize;
+    let dat_len = if on_first {
         8 - (dtype_len - minbits) % 8
     } else {
         8
     };
-    if dat_len == 0 {
-        dat_len = 8;
-    }
-    if *buf_len > dat_len {
-        data[at] = ((u32::from(val) >> (*buf_len - dat_len)) & mask_bits(dat_len)) as u8;
-        *buf_len -= dat_len;
+    if bits.buf_len > dat_len {
+        data[at] = ((u32::from(val) >> (bits.buf_len - dat_len)) & mask_bits(dat_len)) as u8;
+        bits.buf_len -= dat_len;
     } else {
-        data[at] = (u32::from(val & low_mask_u8(*buf_len)) << (dat_len - *buf_len)) as u8;
-        let left = dat_len - *buf_len;
-        *j += 1;
-        *buf_len = 8;
+        data[at] = (u32::from(val & low_mask_u8(bits.buf_len)) << (dat_len - bits.buf_len)) as u8;
+        let left = dat_len - bits.buf_len;
+        bits.bump();
         if left == 0 {
             return Ok(());
         }
-        if *j >= buffer.len() {
+        if bits.j >= bits.buffer.len() {
             return Err(HDF5Error::InvalidHeader);
         }
-        val = buffer[*j];
-        data[at] |= ((u32::from(val) >> (*buf_len - left)) & mask_bits(left)) as u8;
-        *buf_len -= left;
+        val = bits.buffer[bits.j];
+        data[at] |= ((u32::from(val) >> (bits.buf_len - left)) & mask_bits(left)) as u8;
+        bits.buf_len -= left;
     }
     Ok(())
 }
@@ -661,10 +646,12 @@ mod tests {
     fn fletcher32_strips_matching_checksum() {
         let payload = b"abcd";
         let sum = fletcher32(payload);
-        let mut buf = payload.to_vec();
-        buf.extend_from_slice(&sum.to_be_bytes());
-        let got = check_fletcher32(&buf).expect("checksum");
-        assert_eq!(got, payload);
+        for enc in [sum.to_be_bytes(), sum.to_le_bytes()] {
+            let mut buf = payload.to_vec();
+            buf.extend_from_slice(&enc);
+            let got = check_fletcher32(&buf).expect("checksum");
+            assert_eq!(got, payload);
+        }
     }
 
     #[test]

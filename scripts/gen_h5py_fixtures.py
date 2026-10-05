@@ -237,8 +237,8 @@ nbit_dt.set_precision(12)
 nbit_dt.set_offset(0)
 low_level(
     out / "h5py_nbit.h5",
-    np.array([0, 1, 100, 4095], dtype=np.int32),
-    (4,),
+    np.array([0, 1, 100, -5, 2047], dtype=np.int32),
+    (5,),
     lambda dcpl: dcpl.set_filter(h5py.h5z.FILTER_NBIT, h5py.h5z.FLAG_OPTIONAL, ()),
     dtype=nbit_dt,
 )
