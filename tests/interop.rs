@@ -12,6 +12,24 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
+fn python3() -> std::process::Command {
+    // Prefer distro Python that has system h5py (/usr/bin) over a user build.
+    for cand in ["/usr/bin/python3", "python3"] {
+        let mut c = std::process::Command::new(cand);
+        let ok = c
+            .arg("-c")
+            .arg("import h5py")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if ok {
+            return std::process::Command::new(cand);
+        }
+    }
+    Command::new("python3")
+}
+
+
 fn interop_dir() -> PathBuf {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/interop_tmp");
     std::fs::create_dir_all(&p).expect("tmpdir");
@@ -152,20 +170,142 @@ fn gold_read_h5py_rank5() {
 }
 
 #[test]
-fn gold_read_h5py_gzip_is_filtered() {
+fn gold_read_h5py_gzip_deflate() {
     let f = Hdf5File::open(fixture("h5py_gzip.h5")).expect("open gzip");
     assert_eq!(f.dataset_dtype("data").expect("dtype"), HDF5DType::Float64);
     assert_eq!(f.dataset_shape("data").expect("shape"), vec![5, 4]);
-    match f.read_f64("data") {
-        Err(HDF5Error::FilteredNotSupported) => {}
-        other => panic!("expected FilteredNotSupported, got {other:?}"),
-    }
+    let (shape, bits) = f.read_f64("data").expect("inflate gzip");
+    assert_eq!(shape, vec![5, 4]);
+    let want = [
+        0x0000_0000_0000_0000u64,
+        0x3FF0_0000_0000_0000,
+        0x4000_0000_0000_0000,
+        0x4008_0000_0000_0000,
+        0x4010_0000_0000_0000,
+        0x4014_0000_0000_0000,
+        0x4018_0000_0000_0000,
+        0x401C_0000_0000_0000,
+        0x4020_0000_0000_0000,
+        0x4022_0000_0000_0000,
+        0x4024_0000_0000_0000,
+        0x4026_0000_0000_0000,
+        0x4028_0000_0000_0000,
+        0x402A_0000_0000_0000,
+        0x402C_0000_0000_0000,
+        0x402E_0000_0000_0000,
+        0x4030_0000_0000_0000,
+        0x4031_0000_0000_0000,
+        0x4032_0000_0000_0000,
+        0x4033_0000_0000_0000,
+    ];
+    assert_eq!(bits, want);
 }
 
 #[test]
-fn gold_read_h5py_complex_is_other() {
+fn gold_read_h5py_gzip_chunked() {
+    let f = Hdf5File::open(fixture("h5py_gzip_chunked.h5")).expect("open gzip chunked");
+    let (shape, bits) = f.read_f64("data").expect("inflate multi-chunk gzip");
+    assert_eq!(shape, vec![5, 4]);
+    let want = [
+        0x0000_0000_0000_0000u64,
+        0x3FF0_0000_0000_0000,
+        0x4000_0000_0000_0000,
+        0x4008_0000_0000_0000,
+        0x4010_0000_0000_0000,
+        0x4014_0000_0000_0000,
+        0x4018_0000_0000_0000,
+        0x401C_0000_0000_0000,
+        0x4020_0000_0000_0000,
+        0x4022_0000_0000_0000,
+        0x4024_0000_0000_0000,
+        0x4026_0000_0000_0000,
+        0x4028_0000_0000_0000,
+        0x402A_0000_0000_0000,
+        0x402C_0000_0000_0000,
+        0x402E_0000_0000_0000,
+        0x4030_0000_0000_0000,
+        0x4031_0000_0000_0000,
+        0x4032_0000_0000_0000,
+        0x4033_0000_0000_0000,
+    ];
+    assert_eq!(bits, want);
+}
+
+#[test]
+fn gold_read_h5py_layout_v4_fixed_array() {
+    let f = Hdf5File::open(fixture("h5py_layout_v4_chunked.h5")).expect("open v4");
+    let (shape, bits) = f.read_f64("data").expect("layout v4 fixed array");
+    assert_eq!(shape, vec![5, 4]);
+    let want = [
+        0x0000_0000_0000_0000u64,
+        0x3FF0_0000_0000_0000,
+        0x4000_0000_0000_0000,
+        0x4008_0000_0000_0000,
+        0x4010_0000_0000_0000,
+        0x4014_0000_0000_0000,
+        0x4018_0000_0000_0000,
+        0x401C_0000_0000_0000,
+        0x4020_0000_0000_0000,
+        0x4022_0000_0000_0000,
+        0x4024_0000_0000_0000,
+        0x4026_0000_0000_0000,
+        0x4028_0000_0000_0000,
+        0x402A_0000_0000_0000,
+        0x402C_0000_0000_0000,
+        0x402E_0000_0000_0000,
+        0x4030_0000_0000_0000,
+        0x4031_0000_0000_0000,
+        0x4032_0000_0000_0000,
+        0x4033_0000_0000_0000,
+    ];
+    assert_eq!(bits, want);
+}
+
+#[test]
+fn gold_read_h5py_layout_v4_single() {
+    let f = Hdf5File::open(fixture("h5py_layout_v4_single.h5")).expect("open v4 single");
+    let (shape, bits) = f.read_f64("data").expect("layout v4 single chunk");
+    assert_eq!(shape, vec![3, 4]);
+    assert_eq!(bits, ieee64_ints_0_to_11());
+}
+
+#[test]
+fn gold_read_h5py_layout_v4_gzip() {
+    let f = Hdf5File::open(fixture("h5py_layout_v4_gzip.h5")).expect("open v4 gzip");
+    let (shape, bits) = f.read_f64("data").expect("layout v4 + gzip");
+    assert_eq!(shape, vec![5, 4]);
+    let want = [
+        0x0000_0000_0000_0000u64,
+        0x3FF0_0000_0000_0000,
+        0x4000_0000_0000_0000,
+        0x4008_0000_0000_0000,
+        0x4010_0000_0000_0000,
+        0x4014_0000_0000_0000,
+        0x4018_0000_0000_0000,
+        0x401C_0000_0000_0000,
+        0x4020_0000_0000_0000,
+        0x4022_0000_0000_0000,
+        0x4024_0000_0000_0000,
+        0x4026_0000_0000_0000,
+        0x4028_0000_0000_0000,
+        0x402A_0000_0000_0000,
+        0x402C_0000_0000_0000,
+        0x402E_0000_0000_0000,
+        0x4030_0000_0000_0000,
+        0x4031_0000_0000_0000,
+        0x4032_0000_0000_0000,
+        0x4033_0000_0000_0000,
+    ];
+    assert_eq!(bits, want);
+}
+
+#[test]
+fn gold_read_h5py_complex_is_compound() {
     let f = Hdf5File::open(fixture("h5py_complex.h5")).expect("open complex");
-    assert_eq!(f.dataset_dtype("data").expect("dtype"), HDF5DType::Other);
+    assert_eq!(
+        f.dataset_dtype("data").expect("dtype"),
+        HDF5DType::Compound { size: 16 }
+    );
     match f.read_f64("data") {
         Err(HDF5Error::TypeMismatch) => {}
         other => panic!("expected TypeMismatch, got {other:?}"),
@@ -174,6 +314,68 @@ fn gold_read_h5py_complex_is_other() {
         Err(HDF5Error::TypeMismatch) => {}
         other => panic!("opaque must not swallow compound, got {other:?}"),
     }
+    let (shape, elem, raw) = f.read_raw("data").expect("raw compound blob");
+    assert_eq!(shape, vec![2, 2]);
+    assert_eq!(elem, 16);
+    assert_eq!(raw.len(), 64);
+    let fields = f.compound_fields("data").expect("fields");
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0].name, "r");
+    assert_eq!(fields[0].offset, 0);
+    assert_eq!(fields[0].size, 8);
+    assert_eq!(fields[1].name, "i");
+    assert_eq!(fields[1].offset, 8);
+    assert_eq!(fields[1].size, 8);
+}
+
+#[test]
+fn gold_read_h5py_compound_fields() {
+    let f = Hdf5File::open(fixture("h5py_compound.h5")).expect("open compound");
+    assert_eq!(
+        f.dataset_dtype("points").expect("dtype"),
+        HDF5DType::Compound { size: 12 }
+    );
+    let fields = f.compound_fields("points").expect("fields");
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0].name, "x");
+    assert_eq!(fields[0].offset, 0);
+    assert_eq!(fields[0].size, 4);
+    assert_eq!(fields[1].name, "y");
+    assert_eq!(fields[1].offset, 4);
+    assert_eq!(fields[1].size, 8);
+    let (shape, elem, raw) = f.read_raw("points").expect("raw");
+    assert_eq!(shape, vec![3]);
+    assert_eq!(elem, 12);
+    assert_eq!(raw.len(), 36);
+    // First record: x=1 i32 LE, y=1.5 f64 LE
+    assert_eq!(&raw[0..4], &1i32.to_le_bytes());
+    assert_eq!(&raw[4..12], &0x3FF8_0000_0000_0000u64.to_le_bytes());
+}
+
+#[test]
+fn gold_read_h5py_f64be() {
+    let f = Hdf5File::open(fixture("h5py_f64be.h5")).expect("open be f64");
+    assert_eq!(f.dataset_dtype("data").expect("dtype"), HDF5DType::Float64);
+    let (shape, bits) = f.read_f64("data").expect("read BE as LE lanes");
+    assert_eq!(shape, vec![2, 2]);
+    assert_eq!(
+        bits,
+        vec![
+            0x3FF0_0000_0000_0000,
+            0x4000_0000_0000_0000,
+            0x4008_0000_0000_0000,
+            0x4010_0000_0000_0000,
+        ]
+    );
+}
+
+#[test]
+fn gold_read_h5py_i32be() {
+    let f = Hdf5File::open(fixture("h5py_i32be.h5")).expect("open be i32");
+    assert_eq!(f.dataset_dtype("data").expect("dtype"), HDF5DType::Int32);
+    let (shape, bits) = f.read_i32("data").expect("read BE i32");
+    assert_eq!(shape, vec![2, 3]);
+    assert_eq!(bits, vec![1, 2, 3, 4, 5, 6]);
 }
 
 fn write_ours() -> (PathBuf, Vec<u64>) {
@@ -205,7 +407,7 @@ with h5py.File(p, "r") as hf:
     assert np.array_equal(got, want), got
 print("ok")
 "#;
-    let out = Command::new("python3")
+    let out = python3()
         .arg("-c")
         .arg(py)
         .arg(&path)
@@ -237,7 +439,7 @@ with h5py.File(p, "r") as hf:
     assert str(ver), ver
 print("ok")
 "#;
-    let out = Command::new("python3")
+    let out = python3()
         .arg("-c")
         .arg(py)
         .arg(&path)
@@ -353,3 +555,4 @@ fn gold_matlab_h5read_our_write() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+

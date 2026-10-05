@@ -63,4 +63,48 @@ with h5py.File(out / "h5py_complex.h5", "w") as f:
         data=np.array([[1 + 2j, 3 + 4j], [5 + 6j, 7 + 8j]], dtype=np.complex128),
     )
 
+with h5py.File(out / "h5py_gzip_chunked.h5", "w") as f:
+    f.create_dataset(
+        "data",
+        data=np.arange(20, dtype=np.float64).reshape(5, 4),
+        chunks=(2, 4),
+        compression="gzip",
+        compression_opts=4,
+    )
+
+with h5py.File(out / "h5py_layout_v4_chunked.h5", "w", libver="latest") as f:
+    f.create_dataset(
+        "data",
+        data=np.arange(20, dtype=np.float64).reshape(5, 4),
+        chunks=(2, 4),
+    )
+
+with h5py.File(out / "h5py_layout_v4_single.h5", "w", libver="latest") as f:
+    f.create_dataset(
+        "data",
+        data=np.arange(12, dtype=np.float64).reshape(3, 4),
+        chunks=(3, 4),
+    )
+
+with h5py.File(out / "h5py_layout_v4_gzip.h5", "w", libver="latest") as f:
+    f.create_dataset(
+        "data",
+        data=np.arange(20, dtype=np.float64).reshape(5, 4),
+        chunks=(2, 4),
+        compression="gzip",
+    )
+
+dt = np.dtype([("x", "<i4"), ("y", "<f8")])
+arr = np.zeros(3, dtype=dt)
+arr["x"] = [1, 2, 3]
+arr["y"] = [1.5, 2.5, 3.5]
+with h5py.File(out / "h5py_compound.h5", "w") as f:
+    f.create_dataset("points", data=arr)
+
+with h5py.File(out / "h5py_f64be.h5", "w") as f:
+    f.create_dataset("data", data=np.array([[1.0, 2.0], [3.0, 4.0]], dtype=">f8"))
+
+with h5py.File(out / "h5py_i32be.h5", "w") as f:
+    f.create_dataset("data", data=np.array([[1, 2, 3], [4, 5, 6]], dtype=">i4"))
+
 print("wrote", sorted(p.name for p in out.glob("*.h5")))

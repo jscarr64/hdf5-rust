@@ -21,6 +21,7 @@ Independent HDF5 implementation. Not a wrapper. Not affiliated with The HDF Grou
 | Jenkins lookup3 checksum | ✅ |
 | Superblock write v2 / read v0+v1+v2+v3 | ✅ |
 | WASM-capable (no libc HDF5) | ✅ |
+| Pure-Rust zlib inflate (deflate filter) | ✅ |
 
 ## Datasets
 
@@ -28,11 +29,17 @@ Independent HDF5 implementation. Not a wrapper. Not affiliated with The HDF Grou
 | ------ | -------- |
 | Contiguous IEEE_F64LE / IEEE_F32LE | ✅ |
 | Integer LE i8–i64 / u8–u64 | ✅ |
+| Big-endian IEEE / integer → LE lanes on read | ✅ |
 | Opaque records | ✅ |
-| Compound / BE / other → `HDF5DType::Other` | ✅ |
+| Compound: field layout + `read_raw` blob | ✅ |
+| Other unspecialized → `HDF5DType::Other` | ✅ |
 | Rank 0 (scalar) through 32 (HDF5 max; not capped at 2) | ✅ |
-| Uncompressed chunked read | ✅ |
-| Filtered (gzip) → `FilteredNotSupported` | ✅ |
+| Uncompressed chunked read (B-tree v1) | ✅ |
+| Layout v4 single-chunk index | ✅ |
+| Layout v4 fixed-array index (FAHD/FADB) | ✅ |
+| Layout v4 extensible-array / implicit / B-tree v2 | ⬜ → `ChunkedNotSupported` |
+| Gzip/deflate filter on chunked read | ✅ |
+| Other filters (shuffle, szip, …) | ⬜ → `FilteredNotSupported` |
 | Append along first dimension | ✅ |
 
 ## Groups and attributes
@@ -50,4 +57,4 @@ Independent HDF5 implementation. Not a wrapper. Not affiliated with The HDF Grou
 
 ## Caller boundary
 
-This crate has **zero crate dependencies**. IEEE datasets are `u64`/`u32` bit lanes. Integers are `i*`/`u*` lanes. Opaque datasets are raw records of a caller-chosen element size. Compound and other unspecialized classes are `HDF5DType::Other`. `write_ieee64` / `read_ieee64` / `write_ieee32` / `read_ieee32` / `append_ieee64` are aliases of the `write_f64` family.
+This crate has **zero crate dependencies**. IEEE datasets are `u64`/`u32` bit lanes (BE sources are byte-swapped into LE lanes on read). Integers are `i*`/`u*` lanes. Opaque datasets are raw records of a caller-chosen element size. Compound datasets report `HDF5DType::Compound { size }` with `compound_fields` introspection and `read_raw` for the opaque element bytes. `write_ieee64` / `read_ieee64` / `write_ieee32` / `read_ieee32` / `append_ieee64` are aliases of the `write_f64` family.

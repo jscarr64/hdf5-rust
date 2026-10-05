@@ -8,8 +8,8 @@ Thank you for looking at the crate. This is a small, standalone HDF5 **format** 
 - IEEE values are integer bit patterns (`u64` / `u32` lanes). Hardware IEEE arithmetic is not used in `src/`.
 - Callers wrap their own array types. This crate does not depend on a numeric library.
 - Write: superblock v2, compact groups, contiguous datasets (`IEEE_F64LE`, `IEEE_F32LE`, integer LE, opaque), rank 0–32 (format max; not capped at 2).
-- Read: superblock v0–v3, object headers v1/v2, old-style symbol-table groups, contiguous data, uncompressed chunked data, string attributes, integer dtypes.
-- Filtered (gzip/deflate) datasets return `Err(HDF5Error::FilteredNotSupported)`. A chunked layout that cannot be walked returns `ChunkedNotSupported`. Those are named stops, not panics and not guessed values.
+- Read: superblock v0–v3, object headers v1/v2, old-style symbol-table groups, contiguous data, chunked data (B-tree v1 + layout-v4 single/fixed-array), deflate/gzip filters, compound field layout, BE numerics as LE lanes, string attributes, integer dtypes.
+- Deflate/gzip filtered chunked reads are supported (pure-Rust inflate). Other filters return `Err(HDF5Error::FilteredNotSupported)`. A chunked layout that cannot be walked (e.g. layout-v4 extensible array / B-tree v2) returns `ChunkedNotSupported`. Those are named stops, not panics and not guessed values.
 
 Incomplete paths return `Err`. They must not panic and must not invent data.
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased (depth on 1.0.5)
+
+### Added
+- Pure-Rust zlib inflate for HDF5 deflate/gzip chunked reads (still zero crate deps).
+- Layout message v4: single-chunk and fixed-array (FAHD/FADB) chunk indexes.
+- Compound datatype field introspection (`compound_fields`) and `read_raw`.
+- Big-endian IEEE and integer reads normalized to little-endian bit lanes.
+
+### Changed
+- `HDF5DType::Compound { size }` for compound datasets (was `Other`).
+- Gzip h5py golds now expect successful inflate (no longer `FilteredNotSupported`).
+
+### Still Unsupported (honest errors)
+- Layout v4 extensible-array, implicit, and B-tree v2 indexes → `ChunkedNotSupported`.
+- Non-deflate filters (shuffle, szip, …) → `FilteredNotSupported`.
+
 ## 1.0.5 — 2026-10-05
 
 - `no_std` + alloc build fixed: bare `vec!` macros in `messages` / `encode` now use `alloc::vec!` (std prelude hid the bug under default features).

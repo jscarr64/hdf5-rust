@@ -3,12 +3,14 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::btree::{read_gheap_object, read_local_heap, walk_chunk_btree, walk_group_btree};
+use crate::btree::{read_gheap_object, read_local_heap, walk_chunk_btree, walk_group_btree, ChunkRef};
 use crate::buf::Reader;
+use crate::chunk_index::{self, ChunkIndex};
 use crate::error::{HDF5Error, Result};
+use crate::filter::{apply_filters, parse_filters, FilterDesc};
 use crate::messages::{
-    parse_attribute, parse_dataspace, parse_datatype, parse_filter_count, parse_layout, parse_link,
-    parse_link_info_heap, parse_symbol_table, ParsedDType, ParsedLayout,
+    parse_attribute, parse_dataspace, parse_datatype, parse_layout, parse_link,
+    parse_link_info_heap, parse_symbol_table, CompoundField, ParsedDType, ParsedLayout,
 };
 use crate::model::{DTypeKind, DatasetRec, FileModel};
 use crate::ohdr::{parse_ohdr, RawMsg};
@@ -143,86 +145,145 @@ fn try_dataset(
             }
         }
     }
-    let mut nfilters = 0u8;
+    let mut filters: Vec<FilterDesc> = Vec::new();
     for m in msgs {
         if m.ty == HDF5_MSG_FILTER {
-            match parse_filter_count(&m.body) {
-                Ok(n) => nfilters = n,
-                Err(_) => nfilters = 1,
+            match parse_filters(&m.body) {
+                Ok(f) => filters = f,
+                Err(_) => {
+                    // Malformed pipeline: treat as filtered so reads fail honestly.
+                    filters = alloc::vec![FilterDesc {
+                        id: 0xffff,
+                        client_data: Vec::new(),
+                    }];
+                }
             }
         }
     }
-    let filtered = nfilters > 0;
-    let kind = dtype_kind(dtype);
+    let fields = compound_fields_of(&dtype);
+    let (kind, needs_swap) = dtype_kind_swap(dtype);
     match layout {
-        ParsedLayout::Chunked { addr, chunk_dims } => {
-            if filtered {
-                return Ok(Some(DatasetRec {
+        ParsedLayout::Chunked { chunk_dims, index } => {
+            let assembled = assemble_chunks(
+                data,
+                sb,
+                &index,
+                &space.dims,
+                &chunk_dims,
+                kind.elem_size(),
+                &filters,
+            );
+            match assembled {
+                Ok(mut raw) => {
+                    if needs_swap {
+                        bswap_inplace(&mut raw, kind.elem_size());
+                    }
+                    Ok(Some(DatasetRec {
+                        shape: space.dims,
+                        kind,
+                        data: raw,
+                        attrs,
+                        chunked: false,
+                        filtered: false,
+                        compound_fields: fields.clone(),
+                    }))
+                }
+                Err(HDF5Error::FilteredNotSupported) => Ok(Some(DatasetRec {
                     shape: space.dims,
                     kind,
                     data: Vec::new(),
                     attrs,
                     chunked: true,
                     filtered: true,
-                }));
-            }
-            let assembled =
-                assemble_chunks(data, sb, addr, &space.dims, &chunk_dims, kind.elem_size());
-            match assembled {
-                Ok(raw) => Ok(Some(DatasetRec {
-                    shape: space.dims,
-                    kind,
-                    data: raw,
-                    attrs,
-                    chunked: false,
-                    filtered: false,
+                    compound_fields: fields.clone(),
                 })),
-                Err(_) => Ok(Some(DatasetRec {
+                Err(HDF5Error::ChunkedNotSupported) => Ok(Some(DatasetRec {
                     shape: space.dims,
                     kind,
                     data: Vec::new(),
                     attrs,
                     chunked: true,
-                    filtered: false,
+                    filtered: !filters.is_empty(),
+                    compound_fields: fields.clone(),
                 })),
+                Err(e) => Err(e),
             }
         }
-        ParsedLayout::Compact { data: raw } => Ok(Some(make_rec(kind, space.dims, raw, attrs))),
+        ParsedLayout::Compact { data: raw } => {
+            let mut raw = raw;
+            if needs_swap {
+                bswap_inplace(&mut raw, kind.elem_size());
+            }
+            Ok(Some(make_rec(kind, space.dims, raw, attrs, fields.clone())))
+        }
         ParsedLayout::Contiguous { addr, size } => {
             let n = if size == 0 {
                 elem_count(&space.dims).saturating_mul(kind.elem_size() as u64)
             } else {
                 size
             };
-            let raw = if n == 0 {
+            let mut raw = if n == 0 {
                 Vec::new()
             } else {
                 Reader::new(data, sb.offset_size, sb.length_size)?
                     .slice_at(addr, n)?
                     .to_vec()
             };
-            Ok(Some(make_rec(kind, space.dims, raw, attrs)))
+            if needs_swap {
+                bswap_inplace(&mut raw, kind.elem_size());
+            }
+            Ok(Some(make_rec(kind, space.dims, raw, attrs, fields)))
         }
     }
 }
 
-fn dtype_kind(dtype: ParsedDType) -> DTypeKind {
+fn dtype_kind_swap(dtype: ParsedDType) -> (DTypeKind, bool) {
     match dtype {
-        ParsedDType::Float64Le => DTypeKind::Float64,
-        ParsedDType::Float32Le => DTypeKind::Float32,
-        ParsedDType::Int8Le => DTypeKind::Int8,
-        ParsedDType::Int16Le => DTypeKind::Int16,
-        ParsedDType::Int32Le => DTypeKind::Int32,
-        ParsedDType::Int64Le => DTypeKind::Int64,
-        ParsedDType::UInt8Le => DTypeKind::UInt8,
-        ParsedDType::UInt16Le => DTypeKind::UInt16,
-        ParsedDType::UInt32Le => DTypeKind::UInt32,
-        ParsedDType::UInt64Le => DTypeKind::UInt64,
-        ParsedDType::Opaque { size } => DTypeKind::Opaque(size),
-        ParsedDType::FixedString { size } | ParsedDType::Other { size } => DTypeKind::Other {
-            size: if size == 0 { 1 } else { size },
-        },
-        ParsedDType::VlenString => DTypeKind::Other { size: 1 },
+        ParsedDType::Float64Le => (DTypeKind::Float64, false),
+        ParsedDType::Float32Le => (DTypeKind::Float32, false),
+        ParsedDType::Int8Le => (DTypeKind::Int8, false),
+        ParsedDType::Int16Le => (DTypeKind::Int16, false),
+        ParsedDType::Int32Le => (DTypeKind::Int32, false),
+        ParsedDType::Int64Le => (DTypeKind::Int64, false),
+        ParsedDType::UInt8Le => (DTypeKind::UInt8, false),
+        ParsedDType::UInt16Le => (DTypeKind::UInt16, false),
+        ParsedDType::UInt32Le => (DTypeKind::UInt32, false),
+        ParsedDType::UInt64Le => (DTypeKind::UInt64, false),
+        ParsedDType::Float64Be => (DTypeKind::Float64, true),
+        ParsedDType::Float32Be => (DTypeKind::Float32, true),
+        ParsedDType::Int8Be => (DTypeKind::Int8, true),
+        ParsedDType::Int16Be => (DTypeKind::Int16, true),
+        ParsedDType::Int32Be => (DTypeKind::Int32, true),
+        ParsedDType::Int64Be => (DTypeKind::Int64, true),
+        ParsedDType::UInt8Be => (DTypeKind::UInt8, true),
+        ParsedDType::UInt16Be => (DTypeKind::UInt16, true),
+        ParsedDType::UInt32Be => (DTypeKind::UInt32, true),
+        ParsedDType::UInt64Be => (DTypeKind::UInt64, true),
+        ParsedDType::Opaque { size } => (DTypeKind::Opaque(size), false),
+        ParsedDType::Compound { size, .. } => (DTypeKind::Compound { size }, false),
+        ParsedDType::FixedString { size } | ParsedDType::Other { size } => (
+            DTypeKind::Other {
+                size: if size == 0 { 1 } else { size },
+            },
+            false,
+        ),
+        ParsedDType::VlenString => (DTypeKind::Other { size: 1 }, false),
+    }
+}
+
+fn compound_fields_of(dtype: &ParsedDType) -> Vec<CompoundField> {
+    match dtype {
+        ParsedDType::Compound { fields, .. } => fields.clone(),
+        _ => Vec::new(),
+    }
+}
+
+fn bswap_inplace(data: &mut [u8], elem: usize) {
+    if elem <= 1 {
+        return;
+    }
+    for chunk in data.chunks_exact_mut(elem) {
+        chunk.reverse();
     }
 }
 
@@ -231,6 +292,7 @@ fn make_rec(
     shape: Vec<u64>,
     data: Vec<u8>,
     attrs: Vec<(String, String)>,
+    compound_fields: Vec<CompoundField>,
 ) -> DatasetRec {
     DatasetRec {
         shape,
@@ -239,29 +301,74 @@ fn make_rec(
         attrs,
         chunked: false,
         filtered: false,
+        compound_fields,
     }
 }
 
 fn assemble_chunks(
     data: &[u8],
     sb: &superblock::Superblock,
-    btree_addr: u64,
+    index: &ChunkIndex,
     shape: &[u64],
     chunk_dims: &[u32],
     elem: usize,
+    filters: &[FilterDesc],
 ) -> Result<Vec<u8>> {
     if elem == 0 {
         return Err(HDF5Error::InvalidHeader);
-    }
-    let r = Reader::new(data, sb.offset_size, sb.length_size)?;
-    if r.is_undef(btree_addr) {
-        return Err(HDF5Error::ChunkedNotSupported);
     }
     let ndims = chunk_dims.len();
     if ndims == 0 {
         return Err(HDF5Error::ChunkedNotSupported);
     }
-    let chunks = walk_chunk_btree(data, btree_addr, ndims, sb.offset_size, sb.length_size, 0)?;
+    let full_chunk_nbytes = chunk_dims
+        .iter()
+        .try_fold(1u64, |a, &b| a.checked_mul(u64::from(b)))
+        .ok_or(HDF5Error::ShapeMismatch)?;
+    let full_chunk_u32 = u32::try_from(full_chunk_nbytes).map_err(|_| HDF5Error::ShapeMismatch)?;
+
+    let chunks: Vec<ChunkRef> = match index {
+        ChunkIndex::BTreeV1 { addr } => {
+            let r = Reader::new(data, sb.offset_size, sb.length_size)?;
+            if r.is_undef(*addr) {
+                return Err(HDF5Error::ChunkedNotSupported);
+            }
+            walk_chunk_btree(data, *addr, ndims, sb.offset_size, sb.length_size, 0)?
+        }
+        ChunkIndex::Single {
+            addr,
+            nbytes,
+            filter_mask,
+        } => {
+            let r = Reader::new(data, sb.offset_size, sb.length_size)?;
+            if r.is_undef(*addr) {
+                return Err(HDF5Error::ChunkedNotSupported);
+            }
+            alloc::vec![chunk_index::single_chunk_ref(
+                *addr,
+                *nbytes,
+                *filter_mask,
+                ndims,
+                full_chunk_u32,
+            )]
+        }
+        ChunkIndex::FixedArray { addr } => {
+            let r = Reader::new(data, sb.offset_size, sb.length_size)?;
+            if r.is_undef(*addr) {
+                return Err(HDF5Error::ChunkedNotSupported);
+            }
+            chunk_index::walk_fixed_array(
+                data,
+                *addr,
+                sb.offset_size,
+                sb.length_size,
+                shape,
+                chunk_dims,
+                0,
+            )?
+        }
+    };
+
     let nbytes = elem_count(shape)
         .saturating_mul(elem as u64)
         .try_into()
@@ -277,16 +384,20 @@ fn assemble_chunks(
         return Err(HDF5Error::ShapeMismatch);
     };
     for ch in chunks {
-        if ch.filter_mask != 0 {
-            return Err(HDF5Error::FilteredNotSupported);
-        }
         let n = if ch.size == 0 {
             continue;
         } else {
             ch.size as u64
         };
         let raw = Reader::new(data, sb.offset_size, sb.length_size)?.slice_at(ch.addr, n)?;
-        copy_chunk(&mut out, shape, elem, &ch.offset, &spatial, raw)?;
+        let decoded = if filters.is_empty() && ch.filter_mask == 0 {
+            raw.to_vec()
+        } else if filters.is_empty() && ch.filter_mask != 0 {
+            return Err(HDF5Error::FilteredNotSupported);
+        } else {
+            apply_filters(raw.to_vec(), filters, ch.filter_mask, full_chunk_u32 as usize)?
+        };
+        copy_chunk(&mut out, shape, elem, &ch.offset, &spatial, &decoded)?;
     }
     Ok(out)
 }

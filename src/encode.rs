@@ -58,7 +58,9 @@ pub fn encode(model: &FileModel) -> Result<Vec<u8>> {
             DTypeKind::UInt32 => encode_integer(4, false),
             DTypeKind::UInt64 => encode_integer(8, false),
             DTypeKind::Opaque(n) => encode_opaque(n as u32),
-            DTypeKind::Other { .. } => return Err(HDF5Error::UnsupportedDtype),
+            DTypeKind::Compound { .. } | DTypeKind::Other { .. } => {
+                return Err(HDF5Error::UnsupportedDtype)
+            }
         };
         msgs.push(RawMsg {
             ty: HDF5_MSG_DATATYPE,

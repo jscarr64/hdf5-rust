@@ -4,11 +4,11 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
-echo "==> cargo test (std)"
-cargo test
+echo "==> cargo test --tests (std; skip doctests — rustdoc needs matching libLLVM)"
+cargo test --tests
 
-echo "==> cargo test --no-default-features"
-cargo test --no-default-features
+echo "==> cargo test --tests --no-default-features"
+cargo test --tests --no-default-features
 
 echo "==> cargo check --no-default-features"
 cargo check --no-default-features
@@ -39,10 +39,11 @@ if grep -nRE 'TODO|FIXME|HACK' --include='*.rs' src; then
   exit 1
 fi
 
-echo "==> no zenith-float / accumath mentions"
+echo "==> no zenith-float / accumath mentions in src/tests/docs (CHANGELOG history exempt)"
 if grep -nRIE 'zenith-float|zenith_float|Accumath|accumath' \
   --exclude-dir=target --exclude-dir=.git \
-  --exclude='ci_full.sh' .; then
+  --exclude='ci_full.sh' --exclude='CHANGELOG.md' \
+  src tests doc README.md CONTRIBUTING.md Cargo.toml; then
   echo "this crate must not mention those names"
   exit 1
 fi

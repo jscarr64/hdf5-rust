@@ -90,6 +90,8 @@ pub const HDF5_LAYOUT_CHUNKED: u8 = 2;
 /// Layout class: compact.
 pub const HDF5_LAYOUT_COMPACT: u8 = 0;
 
+/// Datatype class: compound / structured.
+pub const HDF5_CLASS_COMPOUND: u8 = 6;
 /// Datatype class: floating-point.
 pub const HDF5_CLASS_FLOAT: u8 = 1;
 /// Datatype class: string.

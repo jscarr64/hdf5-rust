@@ -228,6 +228,27 @@ impl Hdf5File {
         Ok((shape, sz, ds.data.clone()))
     }
 
+    /// Compound field layout for `path`, or empty if not a compound dataset.
+    ///
+    /// Errors: [`HDF5Error::NotFound`].
+    pub fn compound_fields(&self, path: &str) -> Result<Vec<crate::CompoundField>> {
+        let ds = self.dataset_meta(path)?;
+        Ok(ds.compound_fields.clone())
+    }
+
+    /// Raw element bytes for any dataset whose storage was materialized (including
+    /// compound / `Other`). Does not reinterpret lanes.
+    ///
+    /// Returns `(shape, element_size, bytes)`.
+    ///
+    /// Errors: [`HDF5Error::NotFound`], [`HDF5Error::ChunkedNotSupported`],
+    /// [`HDF5Error::FilteredNotSupported`].
+    pub fn read_raw(&self, path: &str) -> Result<(Vec<usize>, usize, Vec<u8>)> {
+        let ds = self.dataset(path)?;
+        let shape = ds.shape.iter().map(|d| *d as usize).collect();
+        Ok((shape, ds.kind.elem_size(), ds.data.clone()))
+    }
+
     /// Read signed 8-bit lanes.
     pub fn read_i8(&self, path: &str) -> Result<(Vec<usize>, Vec<i8>)> {
         self.read_kind(path, DTypeKind::Int8, from_i8)
@@ -518,6 +539,7 @@ impl Hdf5File {
             attrs: FileModel::default_attrs(),
             chunked: false,
             filtered: false,
+            compound_fields: Vec::new(),
         };
         self.model.put_dataset(path, rec)
     }
