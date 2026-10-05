@@ -5,6 +5,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use crate::error::{HDF5Error, Result};
+use crate::messages::CompoundField;
 use crate::HDF5DType;
 use crate::{HDF5_CREATED_ATTR, HDF5_MAX_NAME_LEN, HDF5_WRITER_VERSION, HDF5_WRITER_VERSION_ATTR};
 
@@ -16,6 +17,7 @@ pub struct DatasetRec {
     pub attrs: Vec<(String, String)>,
     pub chunked: bool,
     pub filtered: bool,
+    pub compound_fields: Vec<CompoundField>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,6 +33,8 @@ pub enum DTypeKind {
     UInt32,
     UInt64,
     Opaque(usize),
+    /// Compound / structured record of `size` bytes.
+    Compound { size: usize },
     Other { size: usize },
 }
 
@@ -41,7 +45,7 @@ impl DTypeKind {
             Self::Float32 | Self::Int32 | Self::UInt32 => 4,
             Self::Int16 | Self::UInt16 => 2,
             Self::Int8 | Self::UInt8 => 1,
-            Self::Opaque(n) | Self::Other { size: n } => n,
+            Self::Opaque(n) | Self::Compound { size: n } | Self::Other { size: n } => n,
         }
     }
 
@@ -58,6 +62,7 @@ impl DTypeKind {
             Self::UInt32 => HDF5DType::UInt32,
             Self::UInt64 => HDF5DType::UInt64,
             Self::Opaque(n) => HDF5DType::Opaque(n),
+            Self::Compound { size } => HDF5DType::Compound { size },
             Self::Other { .. } => HDF5DType::Other,
         }
     }

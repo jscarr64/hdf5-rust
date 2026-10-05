@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.1.0 — 2026-10-05
+
+### Added
+- Pure-Rust zlib inflate for HDF5 deflate/gzip chunked reads (still zero crate deps).
+- Layout message v4: single-chunk and fixed-array (FAHD/FADB) chunk indexes.
+- Compound datatype field introspection (`compound_fields`) and `read_raw`.
+- Big-endian IEEE and integer reads normalized to little-endian bit lanes.
+
+### Changed
+- `HDF5DType::Compound { size }` for compound datasets (was `Other`).
+- Gzip h5py golds now expect successful inflate (no longer `FilteredNotSupported`).
+
+### Still Unsupported (honest errors)
+- Layout v4 extensible-array, implicit, and B-tree v2 indexes → `ChunkedNotSupported`.
+- Non-deflate filters (shuffle, szip, …) → `FilteredNotSupported`.
+
+## 1.0.5 — 2026-10-05
+
+- `no_std` + alloc build fixed: bare `vec!` macros in `messages` / `encode` now use `alloc::vec!` (std prelude hid the bug under default features).
+- Docs aligned: README install lines and `doc/CAPABILITIES.md` version/date match the crate (were stuck at 1.0.2 after 1.0.3/1.0.4).
+
+
 ## 1.0.4 — 2026-09-20
 
 Clippy debt clear (`-D warnings`): needless collects, lifetime elision, `WalkCtx` for decode arity, gold cast tidy.

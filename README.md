@@ -1,6 +1,6 @@
 # hdf5-rust
 
-Pure-Rust [HDF5](https://www.hdfgroup.org/solutions/hdf5/) reader and writer. **No libhdf5. No C FFI. No crate dependencies.** Current release: **1.0.2** on [crates.io](https://crates.io/crates/hdf5-rust).
+Pure-Rust [HDF5](https://www.hdfgroup.org/solutions/hdf5/) reader and writer. **No libhdf5. No C FFI. No crate dependencies.** Current release: **1.1.0** on [crates.io](https://crates.io/crates/hdf5-rust).
 
 Files are standard HDF5: h5py, MATLAB `h5read`, HDFView, and Julia HDF5.jl can open what this crate writes, and this crate can open what those tools write (contiguous IEEE, integer, and opaque; uncompressed chunked IEEE).
 
@@ -14,9 +14,9 @@ Every other Rust HDF5 crate binds the C library. That blocks WebAssembly, `no_st
 
 - **Write** superblock version 2, compact groups, contiguous datasets.
 - **Read** superblock versions 0, 1, 2, and 3; object headers v1 and v2; old-style symbol-table groups and new-style compact links.
-- **Datatypes:** `IEEE_F64LE`, `IEEE_F32LE`, signed/unsigned integers (8/16/32/64-bit LE), opaque records. Compound / big-endian / other classes are `HDF5DType::Other` (typed reads are `TypeMismatch`, not opaque).
+- **Datatypes:** `IEEE_F64LE` / `IEEE_F32LE`, signed/unsigned integers (8/16/32/64-bit), opaque records. Big-endian numerics are normalized to LE bit lanes on read. Compound types report `HDF5DType::Compound` with `compound_fields` + `read_raw`. Other classes remain `HDF5DType::Other`.
 - **Dataspace:** simple rank 0 (scalar) through **32** (the HDF5 format maximum). Images, volumes, and time series (rank 3–5) are normal, not an error. A rank-3 cube does not prevent reading a rank-2 table in the same file.
-- **Chunked** uncompressed datasets are assembled on read. Gzip/deflate and other filters return `Err(HDF5Error::FilteredNotSupported)`. A chunked layout this crate cannot walk returns `ChunkedNotSupported`. Never a panic and never guessed values.
+- **Chunked** datasets: B-tree v1, layout-v4 single-chunk, and layout-v4 fixed-array indexes are walked. Gzip/deflate is inflated in pure Rust (zero crate deps). Other filters and layout-v4 extensible-array / B-tree v2 return named `FilteredNotSupported` / `ChunkedNotSupported`. Never a panic and never guessed values.
 
 IEEE values are stored as integer bit patterns (`u64` / `u32` lanes). This crate never uses hardware `f32`/`f64` arithmetic. Callers wrap their own array types at the boundary.
 
@@ -26,13 +26,13 @@ Written datasets carry string attributes `hdf5-rust-version` and `created`.
 
 ```toml
 [dependencies]
-hdf5-rust = "1.0.2"
+hdf5-rust = "1.1.0"
 ```
 
 `std` (file I/O) is on by default. For `no_std` + alloc:
 
 ```toml
-hdf5-rust = { version = "1.0.2", default-features = false }
+hdf5-rust = { version = "1.1.0", default-features = false }
 ```
 
 Then use `Hdf5File::from_bytes` / `to_bytes`.

@@ -13,11 +13,14 @@ extern crate alloc;
 mod btree;
 mod buf;
 mod checksum;
+mod chunk_index;
 mod consts;
 mod decode;
 mod encode;
 mod error;
 mod file;
+mod filter;
+mod inflate;
 mod messages;
 mod model;
 mod ohdr;
@@ -26,6 +29,7 @@ mod superblock;
 pub use consts::*;
 pub use error::{HDF5Error, Result};
 pub use file::{dataset_dtype, dataset_shape, list_datasets, list_groups, Hdf5File};
+pub use messages::{CompoundField, CompoundMemberKind};
 
 /// Dataset datatype as reported by [`Hdf5File::dataset_dtype`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,7 +56,13 @@ pub enum HDF5DType {
     UInt64,
     /// Opaque element of `size` bytes.
     Opaque(usize),
-    /// Any other HDF5 datatype this crate does not specialize (compound, BE, …).
+    /// Compound / structured element of `size` bytes. Field layout via
+    /// [`Hdf5File::compound_fields`].
+    Compound {
+        /// Element size in bytes.
+        size: usize,
+    },
+    /// Any other HDF5 datatype this crate does not specialize.
     Other,
 }
 

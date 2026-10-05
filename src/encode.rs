@@ -58,7 +58,9 @@ pub fn encode(model: &FileModel) -> Result<Vec<u8>> {
             DTypeKind::UInt32 => encode_integer(4, false),
             DTypeKind::UInt64 => encode_integer(8, false),
             DTypeKind::Opaque(n) => encode_opaque(n as u32),
-            DTypeKind::Other { .. } => return Err(HDF5Error::UnsupportedDtype),
+            DTypeKind::Compound { .. } | DTypeKind::Other { .. } => {
+                return Err(HDF5Error::UnsupportedDtype)
+            }
         };
         msgs.push(RawMsg {
             ty: HDF5_MSG_DATATYPE,
@@ -160,7 +162,7 @@ pub fn encode_chunked_stub() -> Result<Vec<u8>> {
     crate::buf::push_u32(&mut layout, 1);
     crate::buf::push_u32(&mut layout, 8);
 
-    let msgs = vec![
+    let msgs = alloc::vec![
         RawMsg {
             ty: HDF5_MSG_DATASPACE,
             flags: HDF5_MSG_FLAG_CONSTANT,
@@ -180,7 +182,7 @@ pub fn encode_chunked_stub() -> Result<Vec<u8>> {
     let ds_ohdr = encode_ohdr_v2(&msgs);
     let ds_addr = HDF5_SUPERBLOCK_V2_SIZE as u64;
 
-    let gmsgs = vec![
+    let gmsgs = alloc::vec![
         RawMsg {
             ty: HDF5_MSG_LINK_INFO,
             flags: 0,
