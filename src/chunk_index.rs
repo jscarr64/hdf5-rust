@@ -1,4 +1,5 @@
-//! Layout v4 chunk indexes: single-chunk and fixed array (FAHD/FADB).
+//! Layout v4/v5 chunk indexes: single-chunk, implicit, fixed array,
+//! extensible array, and version-2 B-tree.
 
 use alloc::vec::Vec;
 
@@ -26,6 +27,12 @@ pub enum ChunkIndex {
     },
     /// Fixed array header address.
     FixedArray { addr: u64 },
+    /// Implicit index: chunks packed contiguously at `addr` in C order.
+    Implicit { addr: u64 },
+    /// Extensible-array header address (`EAHD`).
+    ExtensibleArray { addr: u64 },
+    /// Version-2 B-tree header address (`BTHD`).
+    BTreeV2 { addr: u64 },
 }
 
 /// Build a single-chunk reference. `ndims` includes the trailing element-size dim.
@@ -94,33 +101,9 @@ pub fn walk_fixed_array(
     let _client = r.u8()?;
     let _hdr = r.addr()?;
 
-    let unc_size = chunk_dims
-        .iter()
-        .try_fold(1u64, |a, &b| a.checked_mul(u64::from(b)))
-        .ok_or(HDF5Error::ShapeMismatch)?;
-    let unc_size_u32 = u32::try_from(unc_size).map_err(|_| HDF5Error::ShapeMismatch)?;
-
-    let spatial_chunk: Vec<u32> = if chunk_dims.len() == shape.len() + 1 {
-        chunk_dims[..shape.len()].to_vec()
-    } else if chunk_dims.len() == shape.len() {
-        chunk_dims.to_vec()
-    } else {
-        return Err(HDF5Error::ShapeMismatch);
-    };
-    if spatial_chunk.len() != shape.len() {
-        return Err(HDF5Error::ShapeMismatch);
-    }
-    let nchunks_per_dim: Vec<u64> = shape
-        .iter()
-        .zip(spatial_chunk.iter())
-        .map(|(&s, &c)| {
-            if c == 0 {
-                0
-            } else {
-                s.saturating_add(u64::from(c) - 1) / u64::from(c)
-            }
-        })
-        .collect();
+    let unc_size_u32 = full_chunk_nbytes(chunk_dims)?;
+    let spatial_chunk = spatial_chunk_dims(shape, chunk_dims)?;
+    let nchunks_per_dim = nchunks_per_dim(shape, &spatial_chunk)?;
     let ndims_key = chunk_dims.len();
 
     let mut chunks = Vec::with_capacity(max_nelmts as usize);
@@ -150,7 +133,86 @@ pub fn walk_fixed_array(
     Ok(chunks)
 }
 
-fn linear_chunk_offset(
+/// Spatial chunk shape (drops the trailing element-size dimension when present).
+pub(crate) fn spatial_chunk_dims(shape: &[u64], chunk_dims: &[u32]) -> Result<Vec<u32>> {
+    let spatial = if chunk_dims.len() == shape.len() + 1 {
+        &chunk_dims[..shape.len()]
+    } else if chunk_dims.len() == shape.len() || shape.is_empty() {
+        chunk_dims
+    } else {
+        return Err(HDF5Error::ShapeMismatch);
+    };
+    if !shape.is_empty() && spatial.len() != shape.len() {
+        return Err(HDF5Error::ShapeMismatch);
+    }
+    Ok(spatial.to_vec())
+}
+
+/// Number of chunks along each spatial dimension.
+pub(crate) fn nchunks_per_dim(shape: &[u64], spatial_chunk: &[u32]) -> Result<Vec<u64>> {
+    if spatial_chunk.len() != shape.len() {
+        return Err(HDF5Error::ShapeMismatch);
+    }
+    Ok(shape
+        .iter()
+        .zip(spatial_chunk.iter())
+        .map(|(&s, &c)| {
+            if c == 0 {
+                0
+            } else {
+                s.saturating_add(u64::from(c) - 1) / u64::from(c)
+            }
+        })
+        .collect())
+}
+
+/// Product of per-dimension chunk counts.
+pub(crate) fn chunk_count(nchunks_per_dim: &[u64]) -> Result<u64> {
+    nchunks_per_dim
+        .iter()
+        .try_fold(1u64, |a, &b| a.checked_mul(b))
+        .ok_or(HDF5Error::ShapeMismatch)
+}
+
+/// Uncompressed size of one chunk, in bytes.
+pub(crate) fn full_chunk_nbytes(chunk_dims: &[u32]) -> Result<u32> {
+    let unc = chunk_dims
+        .iter()
+        .try_fold(1u64, |a, &b| a.checked_mul(u64::from(b)))
+        .ok_or(HDF5Error::ShapeMismatch)?;
+    u32::try_from(unc).map_err(|_| HDF5Error::ShapeMismatch)
+}
+
+/// Implicit chunk index: `addr` points at chunk 0, and chunk `i` follows it
+/// by `i * full_chunk_nbytes` bytes. Filters are not representable here.
+pub fn walk_implicit(
+    addr: u64,
+    shape: &[u64],
+    chunk_dims: &[u32],
+    full_chunk_nbytes: u32,
+) -> Result<Vec<ChunkRef>> {
+    let spatial = spatial_chunk_dims(shape, chunk_dims)?;
+    let nper = nchunks_per_dim(shape, &spatial)?;
+    let n = chunk_count(&nper)?;
+    let ndims_key = chunk_dims.len();
+    let step = u64::from(full_chunk_nbytes);
+    let mut chunks = Vec::with_capacity(usize::try_from(n).unwrap_or(0));
+    for i in 0..n {
+        let offset = linear_chunk_offset(i, &nper, &spatial, ndims_key)?;
+        let at = addr
+            .checked_add(i.checked_mul(step).ok_or(HDF5Error::ShapeMismatch)?)
+            .ok_or(HDF5Error::ShapeMismatch)?;
+        chunks.push(ChunkRef {
+            size: full_chunk_nbytes,
+            filter_mask: 0,
+            offset,
+            addr: at,
+        });
+    }
+    Ok(chunks)
+}
+
+pub(crate) fn linear_chunk_offset(
     index: u64,
     nchunks_per_dim: &[u64],
     spatial_chunk: &[u32],

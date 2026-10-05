@@ -29,7 +29,6 @@ fn python3() -> std::process::Command {
     Command::new("python3")
 }
 
-
 fn interop_dir() -> PathBuf {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/interop_tmp");
     std::fs::create_dir_all(&p).expect("tmpdir");
@@ -556,3 +555,80 @@ fn gold_matlab_h5read_our_write() {
     );
 }
 
+fn expect_i32(name: &str, shape: &[usize], values: &[i32]) {
+    let f = Hdf5File::open(fixture(name)).unwrap_or_else(|e| panic!("open {name}: {e:?}"));
+    let (got_shape, got) = f
+        .read_i32("data")
+        .unwrap_or_else(|e| panic!("read {name}: {e:?}"));
+    assert_eq!(got_shape, shape, "{name} shape");
+    assert_eq!(got, values, "{name} values");
+}
+
+#[test]
+fn gold_read_h5py_earray_and_btree2() {
+    expect_i32("h5py_earray_small.h5", &[3], &(0..3).collect::<Vec<_>>());
+    expect_i32(
+        "h5py_earray_blocks.h5",
+        &[100],
+        &(0..100).collect::<Vec<_>>(),
+    );
+    expect_i32(
+        "h5py_earray_super.h5",
+        &[400],
+        &(0..400).collect::<Vec<_>>(),
+    );
+    expect_i32("h5py_earray_2d.h5", &[6, 8], &(0..48).collect::<Vec<_>>());
+    expect_i32("h5py_earray_gzip.h5", &[16], &(0..16).collect::<Vec<_>>());
+    expect_i32("h5py_bt2_small.h5", &[2, 2], &(0..4).collect::<Vec<_>>());
+    expect_i32(
+        "h5py_bt2_internal.h5",
+        &[10, 10],
+        &(0..100).collect::<Vec<_>>(),
+    );
+    expect_i32("h5py_bt2_gzip.h5", &[4, 4], &(0..16).collect::<Vec<_>>());
+    expect_i32(
+        "h5py_bt2_fixeddim.h5",
+        &[4, 4, 2],
+        &(0..32).collect::<Vec<_>>(),
+    );
+    let f = Hdf5File::open(fixture("h5py_bt2_depth2.h5")).expect("open bt2 depth 2");
+    let (shape, got) = f.read_u8("data").expect("bt2 depth 2");
+    assert_eq!(shape, vec![73, 73]);
+    let want: Vec<u8> = (0..73 * 73).map(|i| i as u8).collect();
+    assert_eq!(got, want);
+}
+
+#[test]
+fn gold_read_h5py_implicit_and_filters() {
+    expect_i32("h5py_implicit.h5", &[8, 4], &(0..32).collect::<Vec<_>>());
+    expect_i32("h5py_shuffle.h5", &[8], &(0..8).collect::<Vec<_>>());
+    expect_i32("h5py_fletcher32.h5", &[8], &(0..8).collect::<Vec<_>>());
+    expect_i32(
+        "h5py_fletcher_shuffle_gzip.h5",
+        &[8],
+        &(0..8).collect::<Vec<_>>(),
+    );
+    expect_i32("h5py_nbit.h5", &[4], &[0, 1, 100, 4095]);
+    expect_i32(
+        "h5py_scaleoffset_i32.h5",
+        &[8],
+        &[10, 12, 15, 11, -3, -1, 4, 8],
+    );
+}
+
+#[test]
+fn gold_read_h5py_unsupported_filters_are_named() {
+    let f = Hdf5File::open(fixture("h5py_scaleoffset_f64.h5")).expect("open float scaleoffset");
+    match f.read_f64("data") {
+        Err(HDF5Error::FilteredNotSupported) => {}
+        other => panic!("expected FilteredNotSupported, got {other:?}"),
+    }
+    let szip = fixture("h5py_szip.h5");
+    if szip.exists() {
+        let f = Hdf5File::open(&szip).expect("open szip");
+        match f.read_i32("data") {
+            Err(HDF5Error::FilteredNotSupported) => {}
+            other => panic!("expected FilteredNotSupported, got {other:?}"),
+        }
+    }
+}

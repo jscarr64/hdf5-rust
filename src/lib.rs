@@ -11,11 +11,13 @@
 extern crate alloc;
 
 mod btree;
+mod btree2;
 mod buf;
 mod checksum;
 mod chunk_index;
 mod consts;
 mod decode;
+mod earray;
 mod encode;
 mod error;
 mod file;

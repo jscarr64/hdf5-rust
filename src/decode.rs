@@ -3,7 +3,9 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::btree::{read_gheap_object, read_local_heap, walk_chunk_btree, walk_group_btree, ChunkRef};
+use crate::btree::{
+    read_gheap_object, read_local_heap, walk_chunk_btree, walk_group_btree, ChunkRef,
+};
 use crate::buf::Reader;
 use crate::chunk_index::{self, ChunkIndex};
 use crate::error::{HDF5Error, Result};
@@ -367,6 +369,40 @@ fn assemble_chunks(
                 0,
             )?
         }
+        ChunkIndex::Implicit { addr } => {
+            if !filters.is_empty() {
+                return Err(HDF5Error::ChunkedNotSupported);
+            }
+            let r = Reader::new(data, sb.offset_size, sb.length_size)?;
+            if r.is_undef(*addr) {
+                return Err(HDF5Error::ChunkedNotSupported);
+            }
+            chunk_index::walk_implicit(*addr, shape, chunk_dims, full_chunk_u32)?
+        }
+        ChunkIndex::ExtensibleArray { addr } => {
+            let r = Reader::new(data, sb.offset_size, sb.length_size)?;
+            if r.is_undef(*addr) {
+                return Err(HDF5Error::ChunkedNotSupported);
+            }
+            crate::earray::walk_extensible_array(
+                data,
+                *addr,
+                sb.offset_size,
+                sb.length_size,
+                shape,
+                chunk_dims,
+                full_chunk_u32,
+            )?
+        }
+        ChunkIndex::BTreeV2 { addr } => crate::btree2::walk_btree_v2(
+            data,
+            *addr,
+            sb.offset_size,
+            sb.length_size,
+            shape,
+            chunk_dims,
+            full_chunk_u32,
+        )?,
     };
 
     let nbytes = elem_count(shape)
@@ -395,7 +431,12 @@ fn assemble_chunks(
         } else if filters.is_empty() && ch.filter_mask != 0 {
             return Err(HDF5Error::FilteredNotSupported);
         } else {
-            apply_filters(raw.to_vec(), filters, ch.filter_mask, full_chunk_u32 as usize)?
+            apply_filters(
+                raw.to_vec(),
+                filters,
+                ch.filter_mask,
+                full_chunk_u32 as usize,
+            )?
         };
         copy_chunk(&mut out, shape, elem, &ch.offset, &spatial, &decoded)?;
     }
