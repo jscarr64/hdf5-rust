@@ -1,5 +1,8 @@
 //! Pure-Rust zlib inflate (RFC 1950 wrapping DEFLATE RFC 1951).
 //! No crate dependencies. Errors are returned; never panics on bad input.
+//!
+//! `Huff::decode` is derived from `puff.c` 2.3. See the crate `NOTICE` for
+//! the zlib license (Copyright (C) 2002–2013 Mark Adler).
 
 use alloc::vec::Vec;
 
@@ -48,11 +51,27 @@ pub fn inflate_zlib(input: &[u8], expected_len: Option<usize>) -> Result<Vec<u8>
             0 => inflate_stored(&mut br, &mut out, &mut window, &mut wpos, expected_len)?,
             1 => {
                 let (ll, d) = fixed_tables()?;
-                inflate_codes(&mut br, &mut out, &mut window, &mut wpos, &ll, &d, expected_len)?;
+                inflate_codes(
+                    &mut br,
+                    &mut out,
+                    &mut window,
+                    &mut wpos,
+                    &ll,
+                    &d,
+                    expected_len,
+                )?;
             }
             2 => {
                 let (ll, d) = dynamic_tables(&mut br)?;
-                inflate_codes(&mut br, &mut out, &mut window, &mut wpos, &ll, &d, expected_len)?;
+                inflate_codes(
+                    &mut br,
+                    &mut out,
+                    &mut window,
+                    &mut wpos,
+                    &ll,
+                    &d,
+                    expected_len,
+                )?;
             }
             _ => return Err(HDF5Error::InvalidHeader),
         }
@@ -162,6 +181,12 @@ impl Huff {
         })
     }
 
+    /// Decode one symbol.
+    ///
+    /// Derived from the slow `decode()` in `puff.c` 2.3, Copyright (C)
+    /// 2002–2013 Mark Adler, zlib license. See the crate `NOTICE`.
+    /// Altered: Rust, saturating arithmetic, and [`HDF5Error`] instead of
+    /// integer status codes. This is not the original `puff.c`.
     fn decode(&self, br: &mut BitReader<'_>) -> Result<u16> {
         if self.maxbits == 0 {
             return Err(HDF5Error::InvalidHeader);
@@ -368,4 +393,3 @@ fn dynamic_tables(br: &mut BitReader<'_>) -> Result<(Huff, Huff)> {
     let dist = Huff::from_lengths(&lengths[hlit..])?;
     Ok((lit, dist))
 }
-

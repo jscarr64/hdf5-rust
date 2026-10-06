@@ -89,11 +89,7 @@ impl Hdf5File {
     /// Errors: [`HDF5Error::NotFound`]. Chunked datasets still report a type.
     pub fn dataset_dtype(&self, path: &str) -> Result<HDF5DType> {
         let p = FileModel::normalize(path)?;
-        let ds = self
-            .model
-            .datasets
-            .get(&p)
-            .ok_or(HDF5Error::NotFound(p))?;
+        let ds = self.model.datasets.get(&p).ok_or(HDF5Error::NotFound(p))?;
         Ok(ds.kind.to_public())
     }
 
@@ -427,10 +423,7 @@ impl Hdf5File {
 
     fn dataset_meta(&self, path: &str) -> Result<&DatasetRec> {
         let p = FileModel::normalize(path)?;
-        self.model
-            .datasets
-            .get(&p)
-            .ok_or(HDF5Error::NotFound(p))
+        self.model.datasets.get(&p).ok_or(HDF5Error::NotFound(p))
     }
 
     fn dataset(&self, path: &str) -> Result<&DatasetRec> {

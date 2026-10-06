@@ -2,6 +2,10 @@
 //!
 //! IEEE values are integer bit patterns (`u64` / `u32`). Opaque datasets are
 //! raw records. Hardware IEEE arithmetic is not used.
+//!
+//! Atomic n-bit decompression, little-endian integer scale-offset, Fletcher32,
+//! and `Huff::decode` are derived from HDF5 and from `puff.c`. The copyright
+//! and permission notices for those portions are in the crate `NOTICE`.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]

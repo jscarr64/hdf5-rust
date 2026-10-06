@@ -1,0 +1,104 @@
+hdf5-rust
+Copyright 2026 Jeffrey S Carr
+
+Licensed under MIT OR Apache-2.0. See LICENSE-MIT and LICENSE-APACHE.
+
+This product contains code derived from other works. The notices below
+cover those portions and must travel with them.
+
+-------------------------------------------------------------------------------
+HDF5 Software Library (3-clause BSD)
+
+The following portions of src/filter.rs are derived from the HDF5 Software
+Library and Utilities:
+
+- Atomic n-bit decompression: H5Z__nbit_decompress_one_atomic and
+  H5Z__nbit_decompress_one_byte in src/H5Znbit.c (decode_nbit,
+  nbit_one_atomic, nbit_one_byte).
+- Little-endian integer scale-offset unpack: H5Z__scaleoffset_decompress_one_atomic
+  and H5Z__scaleoffset_decompress_one_byte in src/H5Zscaleoffset.c
+  (decode_scaleoffset, so_one_atomic, so_one_byte). The big-endian arm of
+  the HDF5 function is not included.
+- Fletcher32, including the checksum HDF5 accepts for files written before
+  release 1.6.3: H5_checksum_fletcher32 in src/H5checksum.c and
+  H5Z__filter_fletcher32 in src/H5Zfletcher32.c (fletcher32,
+  check_fletcher32, reversed_fletcher).
+
+Those HDF5 sources are covered by the following terms:
+
+Copyright Notice and License Terms for
+HDF5 (Hierarchical Data Format 5) Software Library and Utilities
+-----------------------------------------------------------------------------
+
+HDF5 (Hierarchical Data Format 5) Software Library and Utilities
+Copyright 2006 by The HDF Group.
+
+NCSA HDF5 (Hierarchical Data Format 5) Software Library and Utilities
+Copyright 1998-2006 by The Board of Trustees of the University of Illinois.
+
+All rights reserved.
+
+This software library and utilities is covered by the 3-clause BSD License.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted for any purpose (including commercial purposes)
+provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions, and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions, and the following disclaimer in the documentation
+   and/or materials provided with the distribution.
+
+3. Neither the name of The HDF Group, the name of the University, nor the
+   name of any Contributor may be used to endorse or promote products derived
+   from this software without specific prior written permission from
+   The HDF Group, the University, or the Contributor, respectively.
+
+DISCLAIMER:
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+“AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+For further details, please refer to the full license text available
+at https://opensource.org/licenses/bsd-3-clause
+
+HDF5 is a trademark of The HDF Group. This crate is not affiliated with
+The HDF Group, the University of Illinois, or NCSA.
+
+-------------------------------------------------------------------------------
+puff.c 2.3 (zlib license)
+
+src/inflate.rs Huff::decode is derived from the slow decode() in puff.c
+version 2.3 (21 Jan 2013). This is an altered version: it is Rust, it uses
+saturating arithmetic, and it returns HDF5Error instead of integer status
+codes. It is not the original puff.c.
+
+Copyright (C) 2002-2013 Mark Adler, all rights reserved
+version 2.3, 21 Jan 2013
+
+This software is provided 'as-is', without any express or implied
+warranty.  In no event will the author be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+   claim that you wrote the original software. If you use this software
+   in a product, an acknowledgment in the product documentation would be
+   appreciated but is not required.
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+3. This notice may not be removed or altered from any source distribution.
+
+Mark Adler    madler@alumni.caltech.edu

@@ -34,8 +34,12 @@ pub enum DTypeKind {
     UInt64,
     Opaque(usize),
     /// Compound / structured record of `size` bytes.
-    Compound { size: usize },
-    Other { size: usize },
+    Compound {
+        size: usize,
+    },
+    Other {
+        size: usize,
+    },
 }
 
 impl DTypeKind {
