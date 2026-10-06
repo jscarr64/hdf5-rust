@@ -5,6 +5,9 @@
 //! scale-offset return [`HDF5Error::FilteredNotSupported`]. Integer
 //! scale-offset is decoded as a little-endian writer would have packed it:
 //! HDF5 does not store the writer's memory byte order.
+//!
+//! Atomic n-bit, little-endian integer scale-offset, and Fletcher32 are
+//! derived from the HDF5 library (3-clause BSD). See the crate `NOTICE`.
 
 use alloc::vec::Vec;
 
@@ -185,7 +188,10 @@ fn unshuffle(data: &[u8], cd: &[u32]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-/// Fletcher32 over `data` (HDF5 `H5_checksum_fletcher32`).
+/// Fletcher32 over `data`.
+///
+/// Derived from HDF5 `H5_checksum_fletcher32` in `H5checksum.c`.
+/// HDF5 3-clause BSD. See the crate `NOTICE`.
 fn fletcher32(data: &[u8]) -> u32 {
     let mut sum1: u32 = 0;
     let mut sum2: u32 = 0;
@@ -214,6 +220,12 @@ fn fletcher32(data: &[u8]) -> u32 {
     (sum2 << 16) | (sum1 & 0xffff)
 }
 
+/// Drop a trailing Fletcher32 word when it matches the payload.
+///
+/// Accepts the big-endian word, the native word, and the pre-1.6.3
+/// pair-swapped word. That acceptance is derived from
+/// `H5Z__filter_fletcher32` in `H5Zfletcher32.c`. HDF5 3-clause BSD.
+/// See the crate `NOTICE`.
 fn check_fletcher32(data: &[u8]) -> Result<Vec<u8>> {
     if data.len() < 4 {
         return Err(HDF5Error::InvalidHeader);
@@ -234,6 +246,9 @@ fn check_fletcher32(data: &[u8]) -> Result<Vec<u8>> {
 }
 
 /// Pair-swapped checksum HDF5 accepts for files written before 1.6.3.
+///
+/// Derived from the byte swaps in `H5Z__filter_fletcher32`
+/// (`H5Zfletcher32.c`). HDF5 3-clause BSD. See the crate `NOTICE`.
 fn reversed_fletcher(f: u32) -> u32 {
     let mut c = f.to_ne_bytes();
     c.swap(0, 1);
@@ -241,6 +256,12 @@ fn reversed_fletcher(f: u32) -> u32 {
     u32::from_ne_bytes(c)
 }
 
+/// Decode an atomic n-bit chunk.
+///
+/// The bit walk is derived from `H5Z__nbit_decompress_one_atomic` and
+/// `H5Z__nbit_decompress_one_byte` in `H5Znbit.c`. HDF5 3-clause BSD.
+/// See the crate `NOTICE`. Array and compound n-bit types return
+/// [`HDF5Error::FilteredNotSupported`].
 fn decode_nbit(data: &[u8], cd: &[u32]) -> Result<Vec<u8>> {
     let nparms = cd.first().copied().ok_or(HDF5Error::InvalidHeader)? as usize;
     if nparms != cd.len() || cd.len() < 8 {
@@ -303,6 +324,8 @@ impl BitIn<'_> {
     }
 }
 
+/// One atomic value. Derived from HDF5 `H5Z__nbit_decompress_one_atomic`
+/// (`H5Znbit.c`), 3-clause BSD. See the crate `NOTICE`.
 fn nbit_one_atomic(
     data: &mut [u8],
     data_offset: usize,
@@ -336,6 +359,9 @@ fn nbit_one_atomic(
     Ok(())
 }
 
+/// One byte of an atomic n-bit value. Derived from HDF5
+/// `H5Z__nbit_decompress_one_byte` (`H5Znbit.c`), 3-clause BSD.
+/// See the crate `NOTICE`.
 fn nbit_one_byte(
     data: &mut [u8],
     data_offset: usize,
@@ -407,6 +433,13 @@ fn low_mask_u8(n: u32) -> u8 {
     }
 }
 
+/// Decode integer scale-offset.
+///
+/// The little-endian bit unpack is derived from
+/// `H5Z__scaleoffset_decompress_one_atomic` and
+/// `H5Z__scaleoffset_decompress_one_byte` in `H5Zscaleoffset.c`.
+/// HDF5 3-clause BSD. See the crate `NOTICE`. Floating-point
+/// scale-offset returns [`HDF5Error::FilteredNotSupported`].
 fn decode_scaleoffset(data: &[u8], cd: &[u32]) -> Result<Vec<u8>> {
     if cd.len() != SCALEOFFSET_NPARMS {
         return Err(HDF5Error::InvalidHeader);
@@ -535,6 +568,9 @@ fn scaleoffset_unpack(
     Ok(())
 }
 
+/// One integer value, little-endian arm. Derived from HDF5
+/// `H5Z__scaleoffset_decompress_one_atomic` (`H5Zscaleoffset.c`),
+/// 3-clause BSD. See the crate `NOTICE`.
 fn so_one_atomic(
     data: &mut [u8],
     data_offset: usize,
@@ -559,6 +595,9 @@ fn so_one_atomic(
     Ok(())
 }
 
+/// One byte of an integer scale-offset value. Derived from HDF5
+/// `H5Z__scaleoffset_decompress_one_byte` (`H5Zscaleoffset.c`),
+/// 3-clause BSD, little-endian arm. See the crate `NOTICE`.
 fn so_one_byte(
     data: &mut [u8],
     at: usize,

@@ -1,6 +1,6 @@
 # hdf5-rust
 
-Pure-Rust [HDF5](https://www.hdfgroup.org/solutions/hdf5/) reader and writer. **No libhdf5. No C FFI. No crate dependencies.** Current release: **1.1.1** on [crates.io](https://crates.io/crates/hdf5-rust).
+Pure-Rust [HDF5](https://www.hdfgroup.org/solutions/hdf5/) reader and writer. **No libhdf5. No C FFI. No crate dependencies.** Current release: **1.1.2** on [crates.io](https://crates.io/crates/hdf5-rust).
 
 Files are standard HDF5: h5py, MATLAB `h5read`, HDFView, and Julia HDF5.jl can open what this crate writes, and this crate can open what those tools write (contiguous IEEE, integer, and opaque; uncompressed chunked IEEE).
 
@@ -26,13 +26,13 @@ Written datasets carry string attributes `hdf5-rust-version` and `created`.
 
 ```toml
 [dependencies]
-hdf5-rust = "1.1.1"
+hdf5-rust = "1.1.2"
 ```
 
 `std` (file I/O) is on by default. For `no_std` + alloc:
 
 ```toml
-hdf5-rust = { version = "1.1.1", default-features = false }
+hdf5-rust = { version = "1.1.2", default-features = false }
 ```
 
 Then use `Hdf5File::from_bytes` / `to_bytes`.
@@ -70,9 +70,17 @@ fn main() -> hdf5_rust::Result<()> {
 
 `save` / `open` require the `std` feature (on by default). `write_ieee64` / `read_ieee64` are the same methods under names that do not contain hardware float tokens.
 
+## Credits
+
+Atomic n-bit decompression, little-endian integer scale-offset unpack, and Fletcher32 (including the checksum accepted for files written before HDF5 1.6.3) are derived from the HDF5 library (`H5Znbit.c`, `H5Zscaleoffset.c`, `H5checksum.c`, `H5Zfletcher32.c`). Copyright 2006 The HDF Group. Copyright 1998–2006 The Board of Trustees of the University of Illinois. 3-clause BSD. The Huffman decode loop `Huff::decode` is derived from `puff.c` 2.3, Copyright (C) 2002–2013 Mark Adler, zlib license, and is marked as altered. The copyright and permission text is in [NOTICE](NOTICE).
+
+## Acknowledgments
+
+This crate was developed with help from AI assistants by SpaceXAI, Anthropic, OpenAI, Google, and Meta.
+
 ## License
 
-MIT OR Apache-2.0. See [CONTRIBUTING.md](CONTRIBUTING.md) if you want to report a bug or send a patch.
+MIT OR Apache-2.0. See [CONTRIBUTING.md](CONTRIBUTING.md) if you want to report a bug or send a patch. The `NOTICE` file is part of the package and must be kept with the derived portions above.
 
 ## HDF5 trademark
 

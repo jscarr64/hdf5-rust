@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.2 — 2026-10-06
+
+### Added
+- Root `NOTICE` with the HDF5 3-clause BSD copyright and permission block for the atomic n-bit, little-endian integer scale-offset, and Fletcher32 translations (`H5Znbit.c`, `H5Zscaleoffset.c`, `H5checksum.c`, `H5Zfletcher32.c`), and the zlib notice for `Huff::decode` (derived from `puff.c` 2.3, Copyright (C) 2002–2013 Mark Adler). Header comments on those functions name the source files.
+- README Credits for those sources. Acknowledgments (AI assistants) stay in the README and are not part of `NOTICE`.
+
+### Known issues reviewed for this bump
+
+These are the items listed as still unsupported in 1.1.1 and in the README. Each still returns a named error. None guessed a value. They are deferred, not closed.
+
+- **SZIP (Rice / libaec)** stays `FilteredNotSupported`. A correct decoder is a separate codec. Porting libaec would need its own BSD notice review, and this bump does not add that codec. Oracle: `gold_read_h5py_unsupported_filters_are_named` on `h5py_szip.h5` when the fixture is present.
+- **Floating-point scale-offset** stays `FilteredNotSupported`. The crate contract forbids hardware `f32`/`f64` arithmetic in `src/` (see CONTRIBUTING). Doing this filter properly is a software IEEE path, not a small fix on the integer unpacker. Oracle: the same gold on `h5py_scaleoffset_f64.h5`.
+- **N-bit on array or compound datatypes** stays `FilteredNotSupported`. The shipped path is atomic integers only. Array and compound n-bit need the rest of the HDF5 datatype-parameter tree (`H5Znbit.c` array and compound walkers), which is a new decoder, not a repair of the atomic walk. This tree has no h5py fixture for n-bit array or compound data; adding one only to keep asserting the named error would not implement the feature.
+- **Paged extensible-array data blocks** stay `ChunkedNotSupported`. Unpaged `EADB` blocks are implemented and covered by the h5py extensible-array golds (`h5py_earray_*.h5`). Paged blocks add page-init bitmasks on superblocks and separately stored pages. That is a new index walker. The committed extensible-array fixtures are unpaged.
+
 ## 1.1.1 — 2026-10-05
 
 ### Added
