@@ -1,7 +1,7 @@
 # hdf5-rust capabilities
 
 **Last updated:** 2026-10-06
-**Crate version:** 1.1.2
+**Crate version:** 2.0.0
 
 Independent HDF5 implementation. Not a wrapper. Not affiliated with The HDF Group. **Zero crate dependencies.**
 
