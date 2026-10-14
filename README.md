@@ -37,6 +37,8 @@ hdf5-rust = { version = "2.0.0", default-features = false }
 
 Then use `Hdf5File::from_bytes` / `to_bytes`.
 
+MSRV: Rust 1.99 (`rust-version` in `Cargo.toml`; the repo pins it in `rust-toolchain.toml`).
+
 ## Quick start
 
 ```rust

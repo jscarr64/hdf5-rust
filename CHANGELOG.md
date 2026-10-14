@@ -5,6 +5,9 @@
 ### Changed (breaking)
 - MSRV raised to Rust 1.99 (`rust-version = "1.99"` in `Cargo.toml`), and the toolchain is pinned with `rust-toolchain.toml` (channel `1.99`, components `clippy` and `rustfmt`). Raising the MSRV is a breaking change for downstream builds on older compilers, which is why this is a major bump from 1.1.2.
 
+### Fixed
+- Clippy clean on Rust 1.99 with `-D warnings`: `div_ceil` replaces manual round-up division (`earray.rs`), `is_multiple_of` replaces `% n != 0` checks (`filter.rs`), and `as_chunks` replaces `chunks_exact` with manual array indexing in the little-endian decoders (`file.rs`). No behaviour change.
+
 ### Migration
 - Build with Rust 1.99 or newer (`rustup toolchain install 1.99`). Inside this repo, rustup picks the pinned toolchain up automatically.
 - Update your dependency to `hdf5-rust = "2.0.0"`. There are no API changes in this release.
