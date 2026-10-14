@@ -26,13 +26,13 @@ Written datasets carry string attributes `hdf5-rust-version` and `created`.
 
 ```toml
 [dependencies]
-hdf5-rust = "1.1.2"
+hdf5-rust = "2.0.0"
 ```
 
 `std` (file I/O) is on by default. For `no_std` + alloc:
 
 ```toml
-hdf5-rust = { version = "1.1.2", default-features = false }
+hdf5-rust = { version = "2.0.0", default-features = false }
 ```
 
 Then use `Hdf5File::from_bytes` / `to_bytes`.

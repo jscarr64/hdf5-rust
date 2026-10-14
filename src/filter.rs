@@ -175,7 +175,7 @@ pub fn apply_filters(
 
 fn unshuffle(data: &[u8], cd: &[u32]) -> Result<Vec<u8>> {
     let elem = cd.first().copied().ok_or(HDF5Error::InvalidHeader)? as usize;
-    if elem == 0 || data.len() % elem != 0 {
+    if elem == 0 || !data.len().is_multiple_of(elem) {
         return Err(HDF5Error::InvalidHeader);
     }
     let n = data.len() / elem;
@@ -334,7 +334,7 @@ fn nbit_one_atomic(
 ) -> Result<()> {
     let datatype_len = (spec.size as u32).saturating_mul(8);
     if spec.order == 0 {
-        let begin_i = if (spec.precision + spec.offset) % 8 != 0 {
+        let begin_i = if !(spec.precision + spec.offset).is_multiple_of(8) {
             (spec.precision + spec.offset) / 8
         } else {
             (spec.precision + spec.offset) / 8 - 1
@@ -347,7 +347,7 @@ fn nbit_one_atomic(
         }
     } else {
         let begin_i = (datatype_len - spec.precision - spec.offset) / 8;
-        let end_i = if spec.offset % 8 != 0 {
+        let end_i = if !spec.offset.is_multiple_of(8) {
             (datatype_len - spec.offset) / 8
         } else {
             (datatype_len - spec.offset) / 8 - 1

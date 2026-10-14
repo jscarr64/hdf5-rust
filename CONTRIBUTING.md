@@ -25,7 +25,7 @@ A useful report includes:
 
 ## Development
 
-Rust 1.70 or newer.
+Rust 1.99 or newer (pinned in `rust-toolchain.toml`).
 
 ```bash
 cargo test
