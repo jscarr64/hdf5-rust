@@ -1,6 +1,6 @@
 # hdf5-rust
 
-Pure-Rust [HDF5](https://www.hdfgroup.org/solutions/hdf5/) reader and writer. **No libhdf5. No C FFI. No crate dependencies.** Current release: **1.1.2** on [crates.io](https://crates.io/crates/hdf5-rust).
+Pure-Rust [HDF5](https://www.hdfgroup.org/solutions/hdf5/) reader and writer. **No libhdf5. No C FFI. No crate dependencies.** Current release: **2.0.0** on [crates.io](https://crates.io/crates/hdf5-rust).
 
 Files are standard HDF5: h5py, MATLAB `h5read`, HDFView, and Julia HDF5.jl can open what this crate writes, and this crate can open what those tools write (contiguous IEEE, integer, and opaque; uncompressed chunked IEEE).
 
