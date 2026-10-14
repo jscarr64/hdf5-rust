@@ -591,20 +591,26 @@ fn i64_lanes(bits: &[i64]) -> Vec<u8> {
 }
 
 fn from_u64_le(data: &[u8]) -> Vec<u64> {
-    data.chunks_exact(8)
-        .map(|c| u64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
+    data.as_chunks::<8>()
+        .0
+        .iter()
+        .map(|c| u64::from_le_bytes(*c))
         .collect()
 }
 
 fn from_u32_le(data: &[u8]) -> Vec<u32> {
-    data.chunks_exact(4)
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+    data.as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| u32::from_le_bytes(*c))
         .collect()
 }
 
 fn from_u16_le(data: &[u8]) -> Vec<u16> {
-    data.chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+    data.as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
         .collect()
 }
 
@@ -613,20 +619,26 @@ fn from_i8(data: &[u8]) -> Vec<i8> {
 }
 
 fn from_i16_le(data: &[u8]) -> Vec<i16> {
-    data.chunks_exact(2)
-        .map(|c| i16::from_le_bytes([c[0], c[1]]))
+    data.as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| i16::from_le_bytes(*c))
         .collect()
 }
 
 fn from_i32_le(data: &[u8]) -> Vec<i32> {
-    data.chunks_exact(4)
-        .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+    data.as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| i32::from_le_bytes(*c))
         .collect()
 }
 
 fn from_i64_le(data: &[u8]) -> Vec<i64> {
-    data.chunks_exact(8)
-        .map(|c| i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
+    data.as_chunks::<8>()
+        .0
+        .iter()
+        .map(|c| i64::from_le_bytes(*c))
         .collect()
 }
 

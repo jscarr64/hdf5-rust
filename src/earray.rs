@@ -241,7 +241,7 @@ fn geometry(hdr: &Header) -> Result<Geometry> {
     let mut start_dblk = 0u64;
     for u in 0..nsblks {
         let ndblks = 1u64 << (u / 2);
-        let dblk_nelmts = (1u64 << (((u as u32) + 1) / 2))
+        let dblk_nelmts = (1u64 << ((u as u32).div_ceil(2)))
             .checked_mul(min)
             .ok_or(HDF5Error::InvalidHeader)?;
         sblk.push(Sblk {
@@ -481,7 +481,7 @@ fn decode_element(raw: &[u8], offset_size: u8, full_chunk: u32) -> Result<(u64, 
 }
 
 fn block_offset_size(max_nelmts_bits: u8) -> usize {
-    core::cmp::max(1, (usize::from(max_nelmts_bits) + 7) / 8)
+    core::cmp::max(1, usize::from(max_nelmts_bits).div_ceil(8))
 }
 
 fn floor_log2(n: u64) -> u32 {
