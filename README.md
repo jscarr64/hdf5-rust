@@ -1,6 +1,6 @@
 # hdf5-rust
 
-Part of the Accumath project family — developed for Accumath, the pure-Rust, correct-by-construction math engine. This crate is open source; Accumath itself is a separate product.
+Part of the Accumath project family — developed in conjunction with [Accumath](https://www.accumath.net), the pure-Rust, correct-by-construction math engine. This crate is open source; Accumath itself is a separate product. Learn more at [www.accumath.net](https://www.accumath.net).
 
 Pure-Rust [HDF5](https://www.hdfgroup.org/solutions/hdf5/) reader and writer. **No libhdf5. No C FFI. No crate dependencies.** Current release: **2.0.0** on [crates.io](https://crates.io/crates/hdf5-rust).
 
